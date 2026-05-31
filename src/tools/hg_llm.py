@@ -32,7 +32,6 @@ def get_hf_llm(model_id: str | None = None):
     from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
     from typing import Any, List, Optional
-    import pydantic
 
     token = settings.HF_API_TOKEN
     _model_id = model_id  # capture for closure
