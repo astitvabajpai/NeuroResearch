@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuroResearch — Sign In</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0A0A0F;
+      --surface-card: #111118;
+      --surface-input:#16161F;
+      --border:       #222233;
+      --accent:       #582CFF;
+      --accent2:      #BF40FF;
+      --accent3:      #00F2FF;
+      --green:        #10B981;
+      --red:          #EF4444;
+      --fg:           #FFFFFF;
+      --fg2:          #A1A1A1;
+      --fg-muted:     #555566;
+      --r-sm:         6px;
+      --r-md:         10px;
+      --r-lg:         14px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Neon streaks ── */
+    .streaks {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .streak {
+      position: absolute; height: 3px; border-radius: 2px;
+      filter: blur(18px); opacity: .55;
+    }
+    .streak-1 { width: 520px; top: 180px; left: -40px; background: linear-gradient(90deg,transparent,#582CFF,transparent); transform: rotate(-8deg); }
+    .streak-2 { width: 400px; top: 420px; left: 60px;  background: linear-gradient(90deg,transparent,#BF40FF,transparent); transform: rotate(6deg); filter: blur(22px); }
+    .streak-3 { width: 300px; top: 650px; left: 100px; background: linear-gradient(90deg,transparent,#00F2FF,transparent); transform: rotate(-5deg); filter: blur(16px); opacity: .4; }
+
+    /* ── Glow blobs ── */
+    .glow-left {
+      position: fixed; width: 500px; height: 500px; border-radius: 50%;
+      background: radial-gradient(circle, #582CFF44 0%, transparent 70%);
+      top: 200px; left: -120px; filter: blur(60px); pointer-events: none; z-index: 0;
+    }
+    .glow-right {
+      position: fixed; width: 400px; height: 400px; border-radius: 50%;
+      background: radial-gradient(circle, #BF40FF33 0%, transparent 70%);
+      top: 300px; right: -80px; filter: blur(60px); pointer-events: none; z-index: 0;
+    }
+
+    /* ── Split layout ── */
+    .split { display: flex; width: 100%; min-height: 100vh; position: relative; z-index: 1; }
+
+    /* ── Left panel ── */
+    .left {
+      width: 680px; flex-shrink: 0;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 60px 80px; gap: 32px;
+      border-right: 1px solid rgba(255,255,255,.07);
+    }
+
+    .logo-row { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+      background: linear-gradient(135deg, #582CFF, #BF40FF);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px #582CFF66;
+    }
+    .logo-text { font-size: 22px; font-weight: 700; }
+
+    .headline {
+      font-size: clamp(36px, 4vw, 52px);
+      font-weight: 800; line-height: 1.15;
+      background: linear-gradient(135deg, #fff 0%, #A78BFA 55%, #00F2FF 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subheadline {
+      font-size: 16px; color: var(--fg2); line-height: 1.7;
+      max-width: 480px;
+    }
+
+    .pills { display: flex; gap: 10px; flex-wrap: wrap; }
+    .pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      font-size: 12px; color: var(--fg2);
+    }
+
+    /* ── Right panel ── */
+    .right {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 60px 100px;
+    }
+
+    /* ── Auth card ── */
+    .card {
+      width: 100%; max-width: 420px;
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 40px;
+      display: flex; flex-direction: column; gap: 28px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.4), 0 0 60px rgba(88,44,255,.1);
+    }
+
+    .card-header { display: flex; flex-direction: column; gap: 6px; }
+    .card-title  { font-size: 26px; font-weight: 700; }
+    .card-sub    { font-size: 14px; color: var(--fg2); }
+
+    /* Tabs */
+    .tabs {
+      display: flex; gap: 4px;
+      background: var(--surface-input);
+      border-radius: var(--r-md); padding: 4px;
+    }
+    .tab {
+      flex: 1; padding: 9px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all .2s;
+      color: var(--fg-muted); background: transparent;
+    }
+    .tab.active { background: rgba(255,255,255,.08); color: var(--fg); }
+
+    /* Form */
+    .form { display: flex; flex-direction: column; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 13px; font-weight: 500; color: var(--fg2); }
+    .field input {
+      background: var(--surface-input);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 12px 16px;
+      color: var(--fg); font-size: 14px; font-family: inherit;
+      outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(88,44,255,.18);
+    }
+    .field input::placeholder { color: var(--fg-muted); }
+
+    /* Submit */
+    .btn-submit {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, #582CFF, #8B5CF6);
+      border: none; border-radius: var(--r-md);
+      color: #fff; font-size: 15px; font-weight: 600;
+      font-family: inherit; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(88,44,255,.4);
+      transition: all .2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-submit:hover { box-shadow: 0 4px 28px rgba(88,44,255,.6); transform: translateY(-1px); }
+    .btn-submit:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    /* Divider */
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      color: var(--fg-muted); font-size: 12px;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .footer-note {
+      text-align: center; font-size: 12px; color: var(--fg-muted);
+    }
+
+    /* Error */
+    .error-box {
+      background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 13px; color: var(--red); display: none;
+    }
+    .error-box.show { display: block; }
+
+    /* Spinner */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.25); border-top-color: #fff;
+      border-radius: 50%; animation: spin .65s linear infinite; display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 900px) {
+      .left { display: none; }
+      .right { padding: 40px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="streaks">
+    <div class="streak streak-1"></div>
+    <div class="streak streak-2"></div>
+    <div class="streak streak-3"></div>
+  </div>
+  <div class="glow-left"></div>
+  <div class="glow-right"></div>
+
+  <div class="split">
+    <!-- Left branding panel -->
+    <div class="left">
+      <div class="logo-row">
+        <div class="logo-icon">🧠</div>
+        <span class="logo-text">NeuroResearch</span>
+      </div>
+      <div>
+        <div class="headline">AI Research,<br>Self-Corrected.</div>
+      </div>
+      <div class="subheadline">
+        A multi-agent pipeline that searches, writes, critiques, and self-corrects research reports until quality is met.
+      </div>
+      <div class="pills">
+        <div class="pill"><span>🔍</span> Research Agent</div>
+        <div class="pill"><span>✍️</span> Writer Agent</div>
+        <div class="pill"><span>🧐</span> Critique Agent</div>
+      </div>
+    </div>
+
+    <!-- Right auth panel -->
+    <div class="right">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Welcome back</div>
+          <div class="card-sub">Sign in to your account to continue</div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+          <button class="tab" id="tabRegister" onclick="switchTab('register')">Create Account</button>
+        </div>
+
+        <div class="error-box" id="errorBox"></div>
+
+        <!-- Login form -->
+        <form class="form" id="loginForm" onsubmit="handleLogin(event)">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="loginEmail" placeholder="you@example.com" required />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="loginPassword" placeholder="••••••••" required />
+          </div>
+          <button class="btn-submit" type="submit" id="loginBtn">
+            <div class="spinner" id="loginSpinner"></div>
+            <span id="loginLabel">Sign In</span>
+          </button>
+        </form>
+
+        <!-- Register form -->
+        <form class="form" id="registerForm" style="display:none" onsubmit="handleRegister(event)">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="regUsername" placeholder="Your name" required />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="regEmail" placeholder="you@example.com" required />
+          </div>
+          <div class="field">
+            <label>Password <span style="color:var(--fg-muted);font-weight:400">(min 6 chars)</span></label>
+            <input type="password" id="regPassword" placeholder="••••••••" required />
+          </div>
+          <button class="btn-submit" type="submit" id="registerBtn">
+            <div class="spinner" id="registerSpinner"></div>
+            <span id="registerLabel">Create Account</span>
+          </button>
+        </form>
+
+        <div class="divider">or</div>
+        <div class="footer-note">Self-Correcting Multi-Agent Research System</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  if (localStorage.getItem('nr_token')) window.location.href = '/';
+
+  function switchTab(tab) {
+    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+    document.getElementById('loginForm').style.display    = tab === 'login'    ? 'flex' : 'none';
+    document.getElementById('registerForm').style.display = tab === 'register' ? 'flex' : 'none';
+    document.getElementById('errorBox').classList.remove('show');
+    document.querySelector('.card-title').textContent = tab === 'login' ? 'Welcome back' : 'Create account';
+    document.querySelector('.card-sub').textContent   = tab === 'login'
+      ? 'Sign in to your account to continue'
+      : 'Fill in the details below to get started';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorBox');
+    el.textContent = msg; el.classList.add('show');
+  }
+
+  function setLoading(id, loading, idleText) {
+    document.getElementById(id + 'Btn').disabled = loading;
+    document.getElementById(id + 'Spinner').style.display = loading ? 'block' : 'none';
+    document.getElementById(id + 'Label').textContent = loading
+      ? (id === 'login' ? 'Signing in…' : 'Creating account…') : idleText;
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    document.getElementById('errorBox').classList.remove('show');
+    setLoading('login', true, 'Sign In');
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email: document.getElementById('loginEmail').value, password: document.getElementById('loginPassword').value }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.detail || 'Login failed'); return; }
+      localStorage.setItem('nr_token', data.token);
+      localStorage.setItem('nr_user', JSON.stringify(data.user));
+      window.location.href = '/';
+    } catch(err) { showError('Connection error: ' + (err.message || 'Is the server running?')); }
+    finally { setLoading('login', false, 'Sign In'); }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    document.getElementById('errorBox').classList.remove('show');
+    const username = document.getElementById('regUsername').value.trim();
+    const email    = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+    if (!username) { showError('Username is required'); return; }
+    if (!email)    { showError('Email is required'); return; }
+    if (password.length < 6) { showError('Password must be at least 6 characters'); return; }
+    setLoading('register', true, 'Create Account');
+    try {
+      const res = await fetch('/auth/register', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ username, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.detail || 'Registration failed'); return; }
+      localStorage.setItem('nr_token', data.token);
+      localStorage.setItem('nr_user', JSON.stringify(data.user));
+      window.location.href = '/';
+    } catch(err) { showError('Connection error: ' + (err.message || 'Is the server running?')); }
+    finally { setLoading('register', false, 'Create Account'); }
+  }
+</script>
+</body>
+</html>
