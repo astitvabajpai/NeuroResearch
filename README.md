@@ -1,12 +1,3 @@
----
-title: NeuroResearch — Self-Correcting Multi-Agent Research System
-emoji: 🧠
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-pinned: false
-license: mit
----
 
 # NeuroResearch — Self-Correcting Multi-Agent Research System
 
