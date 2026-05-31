@@ -4,7 +4,7 @@ settings = get_settings()
 
 AVAILABLE_MODELS = [
     {"id": "Qwen/Qwen2.5-7B-Instruct",             "name": "Qwen 2.5 7B",     "tag": "Recommended"},
-    {"id": "meta-llama/Meta-Llama-3-8B-Instruct",  "name": "Llama 3 8B",      "tag": "Gated"},
+    {"id": "meta-llama/Meta-Llama-3-8B-Instruct",  "name": "Llama 3 8B",      "tag": "Needs access"},
     {"id": "mistralai/Mistral-7B-Instruct-v0.3",   "name": "Mistral 7B v0.3", "tag": ""},
     {"id": "microsoft/Phi-3-mini-4k-instruct",     "name": "Phi-3 Mini 4K",   "tag": "Lightweight"},
     {"id": "HuggingFaceH4/zephyr-7b-beta",         "name": "Zephyr 7B Beta",  "tag": ""},
@@ -69,28 +69,26 @@ def get_hf_llm(model_id: str | None = None):
 
             # Use router.huggingface.co which works inside HF Spaces
             # (api-inference.huggingface.co has DNS issues on Spaces)
-            url = f"https://router.huggingface.co/featherless-ai/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {self.hf_token}",
-                "Content-Type":  "application/json",
-            }
-            payload = {
-                "model":       self.model,
-                "messages":    hf_msgs,
-                "max_tokens":  self.max_new_tokens,
-                "temperature": self.temperature,
-                "stream":      False,
-            }
-
-            resp = requests.post(url, headers=headers, json=payload, timeout=120)
-
-            # If featherless-ai doesn't support this model, try nebius
-            if resp.status_code == 400 and "not supported" in resp.text:
-                for provider in ["nebius", "novita", "together"]:
-                    url2 = f"https://router.huggingface.co/{provider}/v1/chat/completions"
-                    resp = requests.post(url2, headers=headers, json=payload, timeout=120)
-                    if resp.ok:
-                        break
+            providers = ["featherless-ai", "nebius", "novita", "together", "sambanova"]
+            resp = None
+            for provider in providers:
+                url = f"https://router.huggingface.co/{provider}/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.hf_token}",
+                    "Content-Type":  "application/json",
+                }
+                payload = {
+                    "model":       self.model,
+                    "messages":    hf_msgs,
+                    "max_tokens":  self.max_new_tokens,
+                    "temperature": self.temperature,
+                    "stream":      False,
+                }
+                resp = requests.post(url, headers=headers, json=payload, timeout=120)
+                if resp.ok:
+                    break
+                if "not supported" not in resp.text and resp.status_code != 400:
+                    break  # real error, don't retry
 
             resp.raise_for_status()
             data = resp.json()
