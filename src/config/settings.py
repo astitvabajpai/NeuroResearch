@@ -3,7 +3,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     HF_API_TOKEN: str
-    HF_MODEL_ID: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    HF_MODEL_ID: str = "Qwen/Qwen2.5-7B-Instruct"
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     MAX_ITERATIONS: int = 3
     QUALITY_THRESHOLD: float = 0.8
