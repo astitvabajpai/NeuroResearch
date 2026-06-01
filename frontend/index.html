@@ -428,6 +428,10 @@
     .report-content li { margin-bottom: 5px; color: var(--fg2); }
     .report-content li::marker { color: var(--accent); }
     .report-content hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .report-content code { font-family: 'Geist Mono', monospace; font-size: 12px; background: var(--surface-input); padding: 1px 6px; border-radius: 4px; color: var(--accent2); }
+    .report-content ol { padding-left: 20px; margin-bottom: 12px; counter-reset: none; }
+    .report-content ol li { margin-bottom: 6px; color: var(--fg2); }
+    .report-content ol li::marker { color: var(--accent); font-weight: 600; }
     .report-actions {
       display: none; padding: 14px 18px; border-top: 1px solid var(--border);
       gap: 8px; flex-wrap: wrap; align-items: center;
@@ -893,16 +897,100 @@
 
   function stopResearch() { setRunning(false); showToast('Research stopped.', 'error'); }
 
-  /* ── Markdown ── */
+  /* ── Markdown renderer ── */
   function md(text) {
+    if (!text) return '';
+
+    // Escape HTML first
+    let t = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Split into lines for block-level processing
+    const lines = t.split('\n');
+    const out = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Headings
+      if (/^### (.+)/.test(trimmed)) {
+        out.push(`<h3>${inlineFormat(trimmed.replace(/^### /, ''))}</h3>`);
+        i++; continue;
+      }
+      if (/^## (.+)/.test(trimmed)) {
+        out.push(`<h2>${inlineFormat(trimmed.replace(/^## /, ''))}</h2>`);
+        i++; continue;
+      }
+      if (/^# (.+)/.test(trimmed)) {
+        out.push(`<h2>${inlineFormat(trimmed.replace(/^# /, ''))}</h2>`);
+        i++; continue;
+      }
+
+      // Horizontal rule
+      if (/^---+$/.test(trimmed)) {
+        out.push('<hr>'); i++; continue;
+      }
+
+      // Numbered list — collect consecutive items
+      if (/^\d+\.\s+/.test(trimmed)) {
+        out.push('<ol>');
+        while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+          out.push(`<li>${inlineFormat(lines[i].trim().replace(/^\d+\.\s+/, ''))}</li>`);
+          i++;
+        }
+        out.push('</ol>');
+        continue;
+      }
+
+      // Bullet list — collect consecutive items
+      if (/^[-•*]\s+/.test(trimmed)) {
+        out.push('<ul>');
+        while (i < lines.length && /^[-•*]\s+/.test(lines[i].trim())) {
+          out.push(`<li>${inlineFormat(lines[i].trim().replace(/^[-•*]\s+/, ''))}</li>`);
+          i++;
+        }
+        out.push('</ul>');
+        continue;
+      }
+
+      // Empty line — paragraph break
+      if (trimmed === '') {
+        out.push('<br>'); i++; continue;
+      }
+
+      // Plain paragraph line — detect if it looks like an unlabelled heading
+      // (short line, no punctuation at end, followed by content)
+      const isImplicitHeading = trimmed.length < 60
+        && !/[.,:;!?]$/.test(trimmed)
+        && i + 1 < lines.length
+        && lines[i + 1].trim() !== ''
+        && !/^\d+\./.test(lines[i + 1].trim())
+        && !/^[-•*]/.test(lines[i + 1].trim())
+        && out.length > 0
+        && out[out.length - 1] === '<br>';
+
+      if (isImplicitHeading) {
+        out.push(`<h3>${inlineFormat(trimmed)}</h3>`);
+      } else {
+        out.push(`<p>${inlineFormat(trimmed)}</p>`);
+      }
+      i++;
+    }
+
+    return out.join('\n');
+  }
+
+  function inlineFormat(text) {
     return text
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h2>$1</h2>')
-      .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>')
-      .replace(/^---$/gm,'<hr>')
-      .replace(/^\d+\.\s+(.+)$/gm,'<li>$1</li>').replace(/^[-•]\s+(.+)$/gm,'<li>$1</li>')
-      .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
-      .replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>');
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>');
   }
 
   function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

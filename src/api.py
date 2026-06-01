@@ -221,33 +221,44 @@ def _build_pdf_html(topic: str, draft: str, score: float, iterations: int, creat
 def _md_to_html(text: str) -> str:
     import re, html as html_lib
     t = html_lib.escape(text)
-    t = re.sub(r'^### (.+)$', r'<h3>\1</h3>', t, flags=re.MULTILINE)
-    t = re.sub(r'^## (.+)$',  r'<h2>\1</h2>', t, flags=re.MULTILINE)
-    t = re.sub(r'^# (.+)$',   r'<h2>\1</h2>', t, flags=re.MULTILINE)
-    t = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', t)
-    t = re.sub(r'\*(.+?)\*',     r'<em>\1</em>', t)
-    t = re.sub(r'^---$', '<hr>', t, flags=re.MULTILINE)
-    t = re.sub(r'^\d+\.\s+(.+)$', r'<li>\1</li>', t, flags=re.MULTILINE)
-    t = re.sub(r'^[-•]\s+(.+)$',  r'<li>\1</li>', t, flags=re.MULTILINE)
-    t = re.sub(r'(<li>.*?</li>\n?)+', lambda m: f'<ul>{m.group()}</ul>', t, flags=re.DOTALL)
-    # Wrap bare paragraphs
     lines = t.split('\n')
-    out, buf = [], []
-    for line in lines:
-        if line.strip() == '':
-            if buf:
-                out.append('<p>' + ' '.join(buf) + '</p>')
-                buf = []
-        elif line.startswith('<'):
-            if buf:
-                out.append('<p>' + ' '.join(buf) + '</p>')
-                buf = []
-            out.append(line)
-        else:
-            buf.append(line)
-    if buf:
-        out.append('<p>' + ' '.join(buf) + '</p>')
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        s = line.strip()
+        if re.match(r'^### ', s):
+            out.append(f'<h3>{s[4:]}</h3>'); i += 1; continue
+        if re.match(r'^## ', s):
+            out.append(f'<h2>{s[3:]}</h2>'); i += 1; continue
+        if re.match(r'^# ', s):
+            out.append(f'<h2>{s[2:]}</h2>'); i += 1; continue
+        if re.match(r'^---+$', s):
+            out.append('<hr>'); i += 1; continue
+        if re.match(r'^\d+\.\s+', s):
+            out.append('<ol>')
+            while i < len(lines) and re.match(r'^\d+\.\s+', lines[i].strip()):
+                item = re.sub(r'^\d+\.\s+', '', lines[i].strip())
+                out.append(f'<li>{_inline(item)}</li>'); i += 1
+            out.append('</ol>'); continue
+        if re.match(r'^[-•*]\s+', s):
+            out.append('<ul>')
+            while i < len(lines) and re.match(r'^[-•*]\s+', lines[i].strip()):
+                item = re.sub(r'^[-•*]\s+', '', lines[i].strip())
+                out.append(f'<li>{_inline(item)}</li>'); i += 1
+            out.append('</ul>'); continue
+        if s == '':
+            out.append('<br>'); i += 1; continue
+        out.append(f'<p>{_inline(s)}</p>'); i += 1
     return '\n'.join(out)
+
+def _inline(text: str) -> str:
+    import re
+    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', text)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    return text
 
 
 # ── Research streaming ────────────────────────────────────────────────────────
