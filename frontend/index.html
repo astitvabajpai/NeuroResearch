@@ -244,7 +244,40 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── MODEL SELECTORS ── */
+    /* ── DEEP RESEARCH TOGGLE ── */
+    .deep-toggle {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: 10px;
+      background: var(--surface-input); border: 1px solid var(--border);
+      cursor: pointer; transition: all .2s; user-select: none;
+    }
+    .deep-toggle:hover { border-color: var(--accent); }
+    .deep-toggle.active {
+      background: rgba(88,44,255,.1);
+      border-color: rgba(88,44,255,.4);
+    }
+    .toggle-switch {
+      width: 36px; height: 20px; border-radius: 10px;
+      background: var(--border2); position: relative;
+      transition: background .2s; flex-shrink: 0;
+    }
+    .toggle-switch::after {
+      content: ''; position: absolute;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; top: 3px; left: 3px;
+      transition: transform .2s;
+    }
+    .deep-toggle.active .toggle-switch { background: var(--accent); }
+    .deep-toggle.active .toggle-switch::after { transform: translateX(16px); }
+    .toggle-label { font-size: 13px; font-weight: 600; color: var(--fg2); }
+    .deep-toggle.active .toggle-label { color: #a5b4fc; }
+    .toggle-sub { font-size: 11px; color: var(--fg-muted); }
+    .deep-badge {
+      margin-left: auto; font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px;
+      background: rgba(245,158,11,.15); color: var(--yellow);
+      border: 1px solid rgba(245,158,11,.3);
+    }
     .model-selectors {
       display: flex; gap: 10px; flex-wrap: wrap;
       padding: 14px 0 0; border-top: 1px solid var(--border); margin-top: 4px;
@@ -504,6 +537,16 @@
           <div class="hint">Press <kbd>Enter</kbd> to run</div>
         </div>
 
+        <!-- Deep Research Toggle -->
+        <div class="deep-toggle" id="deepToggle" onclick="toggleDeep()">
+          <div class="toggle-switch"></div>
+          <div>
+            <div class="toggle-label">🔬 Deep Research</div>
+            <div class="toggle-sub">More searches · longer report · detailed analysis</div>
+          </div>
+          <span class="deep-badge">~2× longer</span>
+        </div>
+
         <!-- Model selectors -->
         <div class="model-selectors" id="modelSelectors">
           <div class="model-group">
@@ -604,6 +647,13 @@
 
   /* ── State ── */
   let allSessions = [], activeId = null, reportText = '', currentTopic = '';
+  let deepResearch = false;
+
+  function toggleDeep() {
+    deepResearch = !deepResearch;
+    const el = document.getElementById('deepToggle');
+    el.classList.toggle('active', deepResearch);
+  }
 
   /* ── Sessions ── */
   async function loadSessions() {
@@ -673,6 +723,8 @@
     activeId = null; currentTopic = ''; reportText = '';
     document.getElementById('topicInput').value = '';
     document.getElementById('navTopic').textContent = 'New Research';
+    deepResearch = false;
+    document.getElementById('deepToggle').classList.remove('active');
     resetUI(); renderSessions(allSessions);
     document.getElementById('topicInput').focus();
   }
@@ -760,12 +812,23 @@
     reportText = '';
   }
 
-  function showReport(draft, score, iters) {
+  function showReport(draft, score, iters, isDeep) {
     document.getElementById('reportBody').innerHTML = `<div class="report-content">${md(draft)}</div>`;
     const sb = document.getElementById('scoreBadge');
     sb.textContent = `Score ${(score*100).toFixed(0)}%`;
     sb.className = 'badge ' + scoreClass(score);
     document.getElementById('iterBadge').textContent = `${iters} iteration${iters!==1?'s':''}`;
+    // Deep research badge
+    const existing = document.getElementById('deepBadge');
+    if (existing) existing.remove();
+    if (isDeep) {
+      const db = document.createElement('span');
+      db.id = 'deepBadge';
+      db.className = 'badge';
+      db.style.cssText = 'background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25)';
+      db.textContent = '🔬 Deep';
+      document.getElementById('reportBadges').appendChild(db);
+    }
     document.getElementById('reportBadges').style.display = 'flex';
     document.getElementById('reportActions').style.display = 'flex';
     document.getElementById('wordCount').textContent = `${draft.trim().split(/\s+/).length} words`;
@@ -790,6 +853,7 @@
         research_model: researchModel || null,
         writer_model:   writerModel   || null,
         critique_model: critiqueModel || null,
+        deep_research:  deepResearch,
       }),
     }).then(res => {
       if (res.status === 401) { logout(); return; }
@@ -818,7 +882,7 @@
     else if (name === 'complete') {
       markAllDone(); setRunning(false);
       reportText = data.draft; activeId = data.session_id;
-      showReport(data.draft, data.critique_score, data.iterations);
+      showReport(data.draft, data.critique_score, data.iterations, data.deep_research);
       showToast(`Research complete — score ${(data.critique_score*100).toFixed(0)}%`);
       loadSessions();
     } else if (name === 'error') {

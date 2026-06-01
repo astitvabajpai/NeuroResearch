@@ -258,11 +258,13 @@ class ResearchRequest(BaseModel):
     research_model: Optional[str] = None
     writer_model:   Optional[str] = None
     critique_model: Optional[str] = None
+    deep_research:  bool = False
 
 
 async def run_research_stream(
     topic: str, max_iterations: int, user_id: int,
     research_model: str, writer_model: str, critique_model: str,
+    deep_research: bool = False,
 ) -> AsyncGenerator[str, None]:
 
     def send(event: str, data: dict) -> str:
@@ -291,6 +293,7 @@ async def run_research_stream(
             "research_model": research_model or DEFAULT_MODEL,
             "writer_model":   writer_model   or DEFAULT_MODEL,
             "critique_model": critique_model or DEFAULT_MODEL,
+            "deep_research":  deep_research,
         }
 
         iteration = 0
@@ -361,6 +364,7 @@ async def run_research_stream(
             "critique_feedback": final_state.get("critique_feedback", ""),
             "iterations": final_state.get("iteration", iteration),
             "research_notes": final_state.get("research_notes", []),
+            "deep_research": deep_research,
             "models": {
                 "research": initial_state["research_model"],
                 "writer":   initial_state["writer_model"],
@@ -378,6 +382,7 @@ async def research_stream(req: ResearchRequest, current_user=Depends(get_current
         run_research_stream(
             req.topic, req.max_iterations, current_user["id"],
             req.research_model, req.writer_model, req.critique_model,
+            req.deep_research,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
