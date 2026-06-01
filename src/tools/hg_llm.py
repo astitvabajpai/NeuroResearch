@@ -3,29 +3,30 @@ from src.config.settings import get_settings
 settings = get_settings()
 
 AVAILABLE_MODELS = [
-    {"id": "Qwen/Qwen2.5-7B-Instruct",             "name": "Qwen 2.5 7B",     "tag": "Recommended"},
-    {"id": "meta-llama/Meta-Llama-3-8B-Instruct",  "name": "Llama 3 8B",      "tag": "Needs access"},
-    {"id": "mistralai/Mistral-7B-Instruct-v0.3",   "name": "Mistral 7B v0.3", "tag": ""},
+    {"id": "meta-llama/Meta-Llama-3-8B-Instruct",  "name": "Llama 3 8B",      "tag": "Recommended"},
+    {"id": "Qwen/Qwen2.5-7B-Instruct",             "name": "Qwen 2.5 7B",     "tag": "Strong"},
+    {"id": "mistralai/Mistral-7B-Instruct-v0.3",   "name": "Mistral 7B v0.3", "tag": "Fast"},
     {"id": "microsoft/Phi-3-mini-4k-instruct",     "name": "Phi-3 Mini 4K",   "tag": "Lightweight"},
     {"id": "HuggingFaceH4/zephyr-7b-beta",         "name": "Zephyr 7B Beta",  "tag": ""},
     {"id": "google/gemma-2-2b-it",                 "name": "Gemma 2 2B",      "tag": "Small"},
     {"id": "tiiuae/falcon-7b-instruct",            "name": "Falcon 7B",       "tag": ""},
 ]
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
 
 _llm_cache: dict = {}
 
 
-def get_hf_llm(model_id: str | None = None):
+def get_hf_llm(model_id: str | None = None, deep: bool = False):
     """
     LangChain-compatible chat LLM using the HuggingFace Inference API.
     Uses requests directly to avoid DNS routing issues on HF Spaces.
     """
     model_id = model_id or settings.HF_MODEL_ID or DEFAULT_MODEL
+    cache_key = f"{model_id}:{'deep' if deep else 'std'}"
 
-    if model_id in _llm_cache:
-        return _llm_cache[model_id]
+    if cache_key in _llm_cache:
+        return _llm_cache[cache_key]
 
     from langchain_core.language_models.chat_models import BaseChatModel
     from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -34,11 +35,12 @@ def get_hf_llm(model_id: str | None = None):
 
     token    = settings.HF_API_TOKEN
     _mid     = model_id
+    _tokens  = 2048 if deep else 1024
 
     class _HFChatLLM(BaseChatModel):
         model:          str = _mid
         hf_token:       str = token
-        max_new_tokens: int = 1024
+        max_new_tokens: int = _tokens
         temperature:    float = 0.7
 
         class Config:
@@ -98,7 +100,7 @@ def get_hf_llm(model_id: str | None = None):
             )
 
     llm = _HFChatLLM()
-    _llm_cache[model_id] = llm
+    _llm_cache[cache_key] = llm
     return llm
 
 
