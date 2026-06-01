@@ -294,8 +294,17 @@ async def run_research_stream(
         }
 
         iteration = 0
+        final_state = dict(initial_state)  # track accumulated state
+
         async for chunk in research_app.astream(initial_state):
             for node_name, node_output in chunk.items():
+                # Merge node output into final_state
+                for k, v in node_output.items():
+                    if k == "research_notes" and isinstance(v, list):
+                        final_state["research_notes"] = final_state.get("research_notes", []) + v
+                    else:
+                        final_state[k] = v
+
                 if node_name == "research":
                     iteration += 1
                     notes = node_output.get("research_notes", [])
@@ -309,6 +318,7 @@ async def run_research_stream(
                 elif node_name == "write":
                     draft = node_output.get("draft", "")
                     if hasattr(draft, "content"): draft = draft.content
+                    final_state["draft"] = draft
                     yield send("agent_update", {
                         "agent": "Writer Agent", "icon": "✍️", "iteration": iteration,
                         "message": f"Iteration {iteration}: Draft written",
@@ -325,10 +335,10 @@ async def run_research_stream(
                         "score": score, "phase": "critique",
                     })
 
-        yield send("status", {"message": "Compiling final report...", "phase": "finalizing"})
-        result = await loop.run_in_executor(None, lambda: research_app.invoke(initial_state))
+        # Use accumulated state — no second invoke needed
+        yield send("status", {"message": "Saving report...", "phase": "finalizing"})
 
-        draft = result.get("draft", "")
+        draft = final_state.get("draft", "")
         if hasattr(draft, "content"): draft = draft.content
 
         session_id = str(uuid.uuid4())
@@ -339,18 +349,18 @@ async def run_research_stream(
         })
         save_session(
             session_id, user_id, topic, draft,
-            result.get("critique_score", 0.0),
-            result.get("iteration", 0),
-            result.get("research_notes", []),
+            final_state.get("critique_score", 0.0),
+            final_state.get("iteration", iteration),
+            final_state.get("research_notes", []),
             models_used,
         )
 
         yield send("complete", {
             "session_id": session_id, "topic": topic, "draft": draft,
-            "critique_score": result.get("critique_score", 0.0),
-            "critique_feedback": result.get("critique_feedback", ""),
-            "iterations": result.get("iteration", 0),
-            "research_notes": result.get("research_notes", []),
+            "critique_score": final_state.get("critique_score", 0.0),
+            "critique_feedback": final_state.get("critique_feedback", ""),
+            "iterations": final_state.get("iteration", iteration),
+            "research_notes": final_state.get("research_notes", []),
             "models": {
                 "research": initial_state["research_model"],
                 "writer":   initial_state["writer_model"],

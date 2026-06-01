@@ -9,14 +9,19 @@ class ResearchAgent(BaseAgent):
         self.llm = None
         self.search_tool = None
         self.prompt = ChatPromptTemplate.from_template("""\
-You are a Research Analyst. Analyze search results and extract key findings.
+You are a Research Analyst. Your job is to extract ONLY factual, specific findings.
 
 Topic: {topic}
 Search Results:
 {search_results}
 
-Extract 3-5 key research findings or insights from the search results.
-Format as bullet points.
+Extract exactly 3-5 key findings. Each finding must:
+- Be a specific fact, statistic, or insight from the search results
+- Be directly relevant to the topic
+- Be written as a clear, concise bullet point
+
+Output ONLY the bullet points. No introduction, no conclusion, no extra text.
+Start each line with "• "
 """)
 
     def _initialize(self):
