@@ -2,7 +2,7 @@
 
 A production-ready AI research pipeline built with **LangGraph**, **FastAPI**, and **HuggingFace Inference API**. Three specialized agents collaborate in a self-correcting loop to produce high-quality research reports on any topic.
 
-🔗 **Live Demo:** [HuggingFace Spaces](https://huggingface.co/spaces/johncenaqweewewwe/neuroResearch)
+🔗 **Live Demo:** [HuggingFace Spaces](https://johncenaqweewewwe-neuroresearch.hf.space)
 🔗 **GitHub:** [astitvabajpai/NeuroResearch](https://github.com/astitvabajpai/NeuroResearch)
 
 ---
