@@ -1,14 +1,3 @@
----
-title: NeuroResearch Multi-Agent Research System
-emoji: 🧠
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-app_file: app.py
-pinned: false
-license: mit
----
-
 # 🧠 NeuroResearch — Self-Correcting Multi-Agent Research System
 
 A production-ready AI research pipeline built with **LangGraph**, **FastAPI**, and **HuggingFace Inference API**. Three specialized agents collaborate in a self-correcting loop to produce high-quality research reports on any topic.
