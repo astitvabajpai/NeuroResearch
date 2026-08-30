@@ -7,18 +7,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python deps first (layer cache)
+# Install Python deps first (layer-cached)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
 COPY . .
 
-# Create data directory for SQLite
+# Create data directory for SQLite persistence
 RUN mkdir -p /data && chmod 777 /data
+
+# HF Spaces mounts persistent storage at /data automatically
+# The DB_PATH in database.py detects /data and uses it when writable
 
 # HF Spaces runs on port 7860
 EXPOSE 7860
 
-# Start server
-CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "7860"]
+# Use app.py entrypoint (standard for HF Spaces)
+CMD ["python", "app.py"]

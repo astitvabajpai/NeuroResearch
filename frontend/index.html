@@ -490,6 +490,7 @@
     <span class="nav-topic" id="navTopic">New Research</span>
     <div class="nav-spacer"></div>
     <div class="nav-online">API Online</div>
+    <a href="/observability" style="display:flex;align-items:center;gap:5px;padding:4px 12px;border-radius:8px;border:1px solid rgba(139,92,246,.3);background:rgba(139,92,246,.08);font-size:11px;font-weight:600;color:#A78BFA;text-decoration:none;flex-shrink:0;" title="Observability dashboard">📊 Traces</a>
     <div class="nav-user">
       <div class="nav-avatar" id="navAvatar">?</div>
       <span class="nav-username" id="navUsername">…</span>
@@ -652,6 +653,7 @@
   /* ── State ── */
   let allSessions = [], activeId = null, reportText = '', currentTopic = '';
   let deepResearch = false;
+  let _abortCtrl = null;   // AbortController for the active SSE fetch
 
   function toggleDeep() {
     deepResearch = !deepResearch;
@@ -761,12 +763,14 @@
     body.querySelector('.feed-empty')?.remove();
     const sc = data.score; const col = sc !== undefined ? scoreColor(sc) : '';
     const av = avClass[data.agent] || '';
+    const latStr = data.latency_ms ? `<span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:var(--fg-muted)">${data.latency_ms.toLocaleString()}ms</span>` : '';
     const el = document.createElement('div'); el.className = 'feed-item';
     el.innerHTML = `
       <div class="feed-item-top">
         <div class="agent-av ${av}">${data.icon||'🤖'}</div>
         <span class="agent-name">${data.agent}</span>
         ${data.iteration ? `<span class="iter-chip">ITER ${data.iteration}</span>` : ''}
+        ${latStr}
       </div>
       <div class="feed-msg">${data.message}</div>
       ${sc !== undefined ? `
@@ -845,15 +849,20 @@
     currentTopic = topic; activeId = null;
     document.getElementById('navTopic').textContent = topic;
     resetUI(); setRunning(true);
-    const maxIter = parseInt(document.getElementById('iterSelect').value);
+    const maxIter       = parseInt(document.getElementById('iterSelect').value);
     const researchModel = document.getElementById('researchModel').value;
     const writerModel   = document.getElementById('writerModel').value;
     const critiqueModel = document.getElementById('critiqueModel').value;
 
+    _abortCtrl = new AbortController();
+
     fetch('/research/stream', {
-      method:'POST', headers: authH(),
+      method: 'POST',
+      headers: authH(),
+      signal: _abortCtrl.signal,
       body: JSON.stringify({
-        topic, max_iterations: maxIter,
+        topic,
+        max_iterations: maxIter,
         research_model: researchModel || null,
         writer_model:   writerModel   || null,
         critique_model: critiqueModel || null,
@@ -861,41 +870,68 @@
       }),
     }).then(res => {
       if (res.status === 401) { logout(); return; }
-      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf      = '';
       function read() {
         reader.read().then(({ done, value }) => {
           if (done) { setRunning(false); return; }
-          buf += dec.decode(value, { stream:true });
-          const parts = buf.split('\n\n'); buf = parts.pop();
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop();
           parts.forEach(part => {
-            const lines = part.split('\n'); let ev = 'message', ds = '';
-            lines.forEach(l => { if (l.startsWith('event: ')) ev = l.slice(7).trim(); if (l.startsWith('data: ')) ds = l.slice(6).trim(); });
+            const lines = part.split('\n');
+            let ev = 'message', ds = '';
+            lines.forEach(l => {
+              if (l.startsWith('event: ')) ev = l.slice(7).trim();
+              if (l.startsWith('data: '))  ds = l.slice(6).trim();
+            });
             if (!ds) return;
             try { handle(ev, JSON.parse(ds)); } catch(e) {}
           });
           read();
-        }).catch(() => setRunning(false));
+        }).catch(err => {
+          if (err.name !== 'AbortError') {
+            showToast('Stream error: ' + err.message, 'error');
+          }
+          setRunning(false);
+        });
       }
       read();
-    }).catch(err => { showToast('Connection failed: ' + err.message, 'error'); setRunning(false); });
+    }).catch(err => {
+      if (err.name !== 'AbortError') {
+        showToast('Connection failed: ' + err.message, 'error');
+      }
+      setRunning(false);
+    });
+  }
+
+  function stopResearch() {
+    if (_abortCtrl) { _abortCtrl.abort(); _abortCtrl = null; }
+    setRunning(false);
+    showToast('Research stopped.', 'error');
   }
 
   function handle(name, data) {
-    if (name === 'status')       { addStatus(data.message); setStep(data.phase); }
-    else if (name === 'agent_update') { addFeedItem(data); setStep(data.phase); }
-    else if (name === 'complete') {
-      markAllDone(); setRunning(false);
+    if (name === 'status') {
+      addStatus(data.message); setStep(data.phase);
+    } else if (name === 'agent_update') {
+      addFeedItem(data); setStep(data.phase);
+    } else if (name === 'complete') {
+      markAllDone(); setRunning(false); _abortCtrl = null;
       reportText = data.draft; activeId = data.session_id;
       showReport(data.draft, data.critique_score, data.iterations, data.deep_research);
-      showToast(`Research complete — score ${(data.critique_score*100).toFixed(0)}%`);
+      showToast(`Research complete — score ${(data.critique_score * 100).toFixed(0)}%`);
       loadSessions();
     } else if (name === 'error') {
-      setRunning(false); showToast('Error: ' + data.message, 'error');
-      document.querySelectorAll('.pipe-step.active').forEach(el => { el.classList.remove('active'); el.classList.add('error'); el.querySelector('.step-pulse')?.remove(); });
+      setRunning(false); _abortCtrl = null;
+      showToast('Error: ' + data.message, 'error');
+      document.querySelectorAll('.pipe-step.active').forEach(el => {
+        el.classList.remove('active'); el.classList.add('error');
+        el.querySelector('.step-pulse')?.remove();
+      });
     }
   }
-
-  function stopResearch() { setRunning(false); showToast('Research stopped.', 'error'); }
 
   /* ── Markdown renderer ── */
   function md(text) {
@@ -1017,7 +1053,7 @@
       selects.forEach(id => {
         const sel = document.getElementById(id);
         sel.innerHTML = models.map(m =>
-          `<option value="${m.id}" ${m.tag==='Recommended'?'selected':''}>
+          `<option value="${m.id}" ${m.id === 'llama-3.3-70b-versatile' ? 'selected' : ''}>
             ${m.name}${m.tag ? ' — ' + m.tag : ''}
           </option>`
         ).join('');

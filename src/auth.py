@@ -1,18 +1,18 @@
 """
 JWT auth helpers — password hashing, token creation/verification.
-Uses passlib[bcrypt] for hashing and python-jose for JWT.
+Uses bcrypt directly (no passlib) and python-jose for JWT.
 """
 import os
 from datetime import datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.database import get_user_by_id
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# ── Config ─────────────────────────────────────────────────────────────────────
 
 def _get_secret() -> str:
     try:
@@ -25,24 +25,23 @@ def _get_secret() -> str:
 ALGORITHM         = "HS256"
 TOKEN_EXPIRE_DAYS = 30
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-_bearer  = HTTPBearer(auto_error=False)
+_bearer = HTTPBearer(auto_error=False)
 
 
-# ── Password ──────────────────────────────────────────────────────────────────
+# ── Password ───────────────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-    return _pwd_ctx.hash(plain)
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
-        return _pwd_ctx.verify(plain, hashed)
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except Exception:
         return False
 
 
-# ── JWT ───────────────────────────────────────────────────────────────────────
+# ── JWT ────────────────────────────────────────────────────────────────────────
 
 def create_token(user_id: int) -> str:
     expire = datetime.utcnow() + timedelta(days=TOKEN_EXPIRE_DAYS)
@@ -64,7 +63,7 @@ def decode_token(token: str) -> int:
         )
 
 
-# ── FastAPI dependency ────────────────────────────────────────────────────────
+# ── FastAPI dependency ─────────────────────────────────────────────────────────
 
 def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_bearer)):
     if not creds:

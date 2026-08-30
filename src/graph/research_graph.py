@@ -1,3 +1,12 @@
+"""
+LangGraph research pipeline.
+
+Graph topology:
+    research → write → critique ──(score >= threshold or max iter)──► END
+                  ▲                        │
+                  └──────── revise ────────┘
+"""
+
 from langgraph.graph import StateGraph, END
 from src.state.research_state import ResearchState
 from src.agents.research_agent import ResearchAgent
@@ -37,6 +46,7 @@ def build_graph():
     return workflow.compile()
 
 
+# Singleton — built once, reused across requests
 _research_app = None
 
 
@@ -45,3 +55,31 @@ def get_research_app():
     if _research_app is None:
         _research_app = build_graph()
     return _research_app
+
+
+def build_initial_state(
+    topic: str,
+    max_iterations: int,
+    research_model: str,
+    writer_model: str,
+    critique_model: str,
+    deep_research: bool = False,
+    trace_id: str | None = None,
+) -> dict:
+    from src.tools.llm import DEFAULT_MODEL, DEFAULT_WRITER_MODEL, DEFAULT_CRITIC_MODEL
+    return {
+        "topic":             topic,
+        "research_notes":    [],
+        "draft":             "",
+        "critique_feedback": "",
+        "critique_score":    0.0,
+        "iteration":         0,
+        "max_iterations":    max_iterations,
+        "final_report":      "",
+        "research_model":    research_model or DEFAULT_MODEL,
+        "writer_model":      writer_model   or DEFAULT_WRITER_MODEL,
+        "critique_model":    critique_model or DEFAULT_CRITIC_MODEL,
+        "deep_research":     deep_research,
+        "mcp_tools":         [],
+        "trace_id":          trace_id,
+    }

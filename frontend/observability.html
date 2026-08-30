@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuroResearch — Observability</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0A0A0F; --surface: #111118; --surface2: #16161F;
+      --border: #222233; --border2: #2A2A44;
+      --accent: #582CFF; --accent2: #8B5CF6;
+      --green: #10B981; --yellow: #F59E0B; --red: #EF4444; --cyan: #00F2FF;
+      --fg: #FFFFFF; --fg2: #A1A1A1; --muted: #555566;
+      --nav-h: 60px;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(88,44,255,.08) 0%, transparent 60%);
+    }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: var(--nav-h); display: flex; align-items: center; gap: 14px;
+      padding: 0 24px; background: rgba(10,10,15,.92);
+      backdrop-filter: blur(20px); border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-logo-icon { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg,#582CFF,#BF40FF); display:flex;align-items:center;justify-content:center;font-size:13px; }
+    .nav-logo-text { font-size: 14px; font-weight: 700; }
+    .nav-sep { width:1px; height:18px; background:var(--border); }
+    .nav-page { font-size:13px; color:var(--fg2); }
+    .nav-spacer { flex:1; }
+    .nav-back { font-size:12px; color:var(--accent2); text-decoration:none; padding:6px 14px; border-radius:8px; border:1px solid rgba(139,92,246,.3); background:rgba(139,92,246,.08); transition:all .2s; }
+    .nav-back:hover { background:rgba(139,92,246,.18); }
+
+    /* LAYOUT */
+    .page { padding: calc(var(--nav-h) + 28px) 28px 60px; max-width: 1200px; margin: 0 auto; position:relative; z-index:1; display:flex; flex-direction:column; gap:20px; }
+
+    /* STAT CARDS */
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+    .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 20px; }
+    .stat-label { font-family:'Geist Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.1em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+    .stat-value { font-size:26px; font-weight:700; }
+    .stat-sub { font-size:11px; color:var(--fg2); margin-top:4px; }
+
+    /* SECTION HEADER */
+    .section-head { display:flex; align-items:center; gap:12px; }
+    .section-title { font-family:'Geist Mono',monospace; font-size:11px; font-weight:600; letter-spacing:.1em; color:var(--muted); text-transform:uppercase; }
+    .section-spacer { flex:1; }
+    .filter-input { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; color:var(--fg); font-size:12px; font-family:inherit; outline:none; width:220px; transition:border-color .2s; }
+    .filter-input:focus { border-color:var(--accent); }
+    .filter-input::placeholder { color:var(--muted); }
+
+    /* SESSION TABLE */
+    .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    table { width:100%; border-collapse:collapse; }
+    thead th { padding:10px 16px; text-align:left; font-family:'Geist Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; border-bottom:1px solid var(--border); background:var(--surface2); }
+    tbody tr { border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:var(--surface2); }
+    tbody tr.selected { background:rgba(88,44,255,.08); }
+    tbody td { padding:11px 16px; font-size:13px; }
+    .topic-cell { max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--fg); }
+    .score-chip { display:inline-block; padding:2px 9px; border-radius:10px; font-family:'Geist Mono',monospace; font-size:11px; font-weight:700; }
+    .chip-green  { background:rgba(16,185,129,.12); color:var(--green); border:1px solid rgba(16,185,129,.25); }
+    .chip-yellow { background:rgba(245,158,11,.12);  color:var(--yellow); border:1px solid rgba(245,158,11,.25); }
+    .chip-red    { background:rgba(239,68,68,.12);   color:var(--red);    border:1px solid rgba(239,68,68,.25); }
+    .mono { font-family:'Geist Mono',monospace; font-size:12px; color:var(--fg2); }
+    .err-chip { background:rgba(239,68,68,.1); color:var(--red); border:1px solid rgba(239,68,68,.25); padding:1px 7px; border-radius:8px; font-size:11px; }
+
+    /* TRACE PANEL */
+    .trace-panel { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; display:none; }
+    .trace-panel.open { display:block; }
+    .trace-header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--border); background:var(--surface2); }
+    .trace-title { font-size:14px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .trace-close { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; padding:4px; transition:color .2s; }
+    .trace-close:hover { color:var(--fg); }
+    .trace-body { padding:20px; }
+
+    /* TIMELINE */
+    .timeline { display:flex; flex-direction:column; gap:0; }
+    .tl-item { display:grid; grid-template-columns:80px 32px 1fr; gap:0 16px; align-items:start; position:relative; }
+    .tl-time { font-family:'Geist Mono',monospace; font-size:11px; color:var(--muted); text-align:right; padding-top:6px; }
+    .tl-connector { display:flex; flex-direction:column; align-items:center; }
+    .tl-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+    .tl-line { width:2px; flex:1; background:var(--border2); min-height:24px; }
+    .tl-item:last-child .tl-line { display:none; }
+    .tl-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:12px; }
+    .tl-card-top { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .tl-node { font-size:13px; font-weight:600; }
+    .tl-iter { font-family:'Geist Mono',monospace; font-size:10px; font-weight:700; padding:2px 8px; border-radius:8px; background:rgba(88,44,255,.15); color:#A78BFA; }
+    .tl-latency { margin-left:auto; font-family:'Geist Mono',monospace; font-size:11px; color:var(--fg2); }
+    .tl-keys { display:flex; gap:6px; flex-wrap:wrap; }
+    .tl-key { font-family:'Geist Mono',monospace; font-size:10px; padding:2px 7px; border-radius:6px; }
+    .tl-key-in  { background:rgba(0,242,255,.08); color:var(--cyan); border:1px solid rgba(0,242,255,.2); }
+    .tl-key-out { background:rgba(16,185,129,.08); color:var(--green); border:1px solid rgba(16,185,129,.2); }
+    .tl-error { margin-top:6px; font-size:12px; color:var(--red); background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.2); border-radius:6px; padding:6px 10px; }
+
+    /* NODE COLORS */
+    .dot-research { background:var(--accent); }
+    .dot-write    { background:var(--accent2); }
+    .dot-critique { background:var(--cyan); }
+    .dot-error    { background:var(--red); }
+
+    /* LATENCY BAR CHART */
+    .perf-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-top:16px; }
+    .perf-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px; }
+    .perf-label { font-size:12px; font-weight:600; margin-bottom:10px; color:var(--fg2); }
+    .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+    .bar-name { font-family:'Geist Mono',monospace; font-size:10px; color:var(--muted); width:64px; }
+    .bar-track { flex:1; height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+    .bar-fill { height:100%; border-radius:4px; transition:width .5s; }
+    .bar-val  { font-family:'Geist Mono',monospace; font-size:10px; color:var(--fg2); width:56px; text-align:right; }
+
+    /* EMPTY / LOADING */
+    .empty { padding:48px; text-align:center; color:var(--muted); }
+    .empty .icon { font-size:32px; margin-bottom:12px; }
+    .loading { padding:32px; text-align:center; color:var(--muted); font-size:13px; }
+
+    /* TOAST */
+    .toast { position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--border2); border-radius:10px; padding:10px 16px; font-size:13px; display:none; gap:8px; align-items:center; z-index:999; }
+    .toast.show { display:flex; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="nav-logo" href="/">
+      <div class="nav-logo-icon">🧠</div>
+      <span class="nav-logo-text">NeuroResearch</span>
+    </a>
+    <div class="nav-sep"></div>
+    <span class="nav-page">Observability</span>
+    <div class="nav-spacer"></div>
+    <a class="nav-back" href="/">← Back to Research</a>
+  </nav>
+
+  <div class="page">
+
+    <!-- Stats -->
+    <div class="stats" id="statsRow">
+      <div class="stat-card">
+        <div class="stat-label">Total Sessions</div>
+        <div class="stat-value" id="statSessions">—</div>
+        <div class="stat-sub">with trace data</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Latency</div>
+        <div class="stat-value" id="statLatency">—</div>
+        <div class="stat-sub">ms total per run</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Score</div>
+        <div class="stat-value" id="statScore">—</div>
+        <div class="stat-sub">critique quality</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Error Rate</div>
+        <div class="stat-value" id="statErrors">—</div>
+        <div class="stat-sub">node failures</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Iterations</div>
+        <div class="stat-value" id="statIter">—</div>
+        <div class="stat-sub">to convergence</div>
+      </div>
+    </div>
+
+    <!-- Session table -->
+    <div class="section-head">
+      <span class="section-title">Session Traces</span>
+      <div class="section-spacer"></div>
+      <input class="filter-input" id="filterInput" placeholder="Filter by topic…" oninput="filterSessions()" />
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Topic</th>
+            <th>Score</th>
+            <th>Iterations</th>
+            <th>Total Latency</th>
+            <th>Events</th>
+            <th>Errors</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="sessionTable">
+          <tr><td colspan="7" class="loading">Loading traces…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Trace detail panel -->
+    <div class="trace-panel" id="tracePanel">
+      <div class="trace-header">
+        <span class="trace-title" id="traceTitle">—</span>
+        <button class="trace-close" onclick="closeTrace()">✕</button>
+      </div>
+      <div class="trace-body">
+        <!-- Performance summary -->
+        <div class="perf-grid" id="perfGrid"></div>
+        <!-- Timeline -->
+        <div style="margin-top:20px;">
+          <div class="section-title" style="margin-bottom:12px;">Execution Timeline</div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="toast" id="toast"><span id="toastMsg"></span></div>
+
+<script>
+  const token = localStorage.getItem('nr_token');
+  if (!token) window.location.href = '/login';
+  const authH = () => ({ 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' });
+
+  let allSessions = [];
+  let selectedId  = null;
+
+  // ── Load sessions ─────────────────────────────────────────────────────────
+  async function loadSessions() {
+    try {
+      const res = await fetch('/traces', { headers: authH() });
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      allSessions = await res.json();
+      renderStats(allSessions);
+      renderTable(allSessions);
+    } catch(e) {
+      document.getElementById('sessionTable').innerHTML =
+        '<tr><td colspan="7" class="empty"><div class="icon">⚠️</div>Could not load traces.</td></tr>';
+    }
+  }
+
+  function renderStats(sessions) {
+    const n = sessions.length;
+    document.getElementById('statSessions').textContent = n;
+
+    if (!n) return;
+    const avgLat  = sessions.reduce((s,r) => s + (r.total_latency_ms||0), 0) / n;
+    const avgScore= sessions.reduce((s,r) => s + (r.critique_score||0), 0) / n;
+    const totalEv = sessions.reduce((s,r) => s + (r.event_count||0), 0);
+    const totalEr = sessions.reduce((s,r) => s + (r.error_count||0), 0);
+    const avgIter = sessions.reduce((s,r) => s + (r.iterations||0), 0) / n;
+    const errRate = totalEv > 0 ? ((totalEr/totalEv)*100).toFixed(1) + '%' : '0%';
+
+    document.getElementById('statLatency').textContent = avgLat > 0 ? Math.round(avgLat).toLocaleString() : '—';
+    document.getElementById('statScore').textContent   = (avgScore*100).toFixed(0) + '%';
+    document.getElementById('statErrors').textContent  = errRate;
+    document.getElementById('statIter').textContent    = avgIter.toFixed(1);
+  }
+
+  function scoreChip(s) {
+    const pct = (s*100).toFixed(0) + '%';
+    const cls = s >= 0.8 ? 'chip-green' : s >= 0.5 ? 'chip-yellow' : 'chip-red';
+    return `<span class="score-chip ${cls}">${pct}</span>`;
+  }
+
+  function renderTable(sessions) {
+    const tb = document.getElementById('sessionTable');
+    if (!sessions.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty"><div class="icon">📭</div>No sessions with traces yet. Run a research to generate trace data.</td></tr>';
+      return;
+    }
+    tb.innerHTML = sessions.map(s => {
+      const lat    = s.total_latency_ms ? Math.round(s.total_latency_ms).toLocaleString() + ' ms' : '—';
+      const date   = new Date(s.created_at).toLocaleDateString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const errBdg = s.error_count > 0 ? `<span class="err-chip">${s.error_count}</span>` : '<span style="color:var(--muted)">0</span>';
+      return `<tr onclick="loadTrace('${s.id}')" class="${s.id===selectedId?'selected':''}">
+        <td class="topic-cell">${esc(s.topic)}</td>
+        <td>${scoreChip(s.critique_score||0)}</td>
+        <td class="mono">${s.iterations||0}</td>
+        <td class="mono">${lat}</td>
+        <td class="mono">${s.event_count||0}</td>
+        <td>${errBdg}</td>
+        <td class="mono" style="color:var(--muted)">${date}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function filterSessions() {
+    const q = document.getElementById('filterInput').value.toLowerCase();
+    renderTable(q ? allSessions.filter(s => s.topic.toLowerCase().includes(q)) : allSessions);
+  }
+
+  // ── Load trace detail ─────────────────────────────────────────────────────
+  async function loadTrace(sessionId) {
+    selectedId = sessionId;
+    filterSessions();
+    const panel = document.getElementById('tracePanel');
+    panel.classList.add('open');
+    document.getElementById('traceTitle').textContent = 'Loading…';
+    document.getElementById('timeline').innerHTML = '<div class="loading">Loading trace…</div>';
+    document.getElementById('perfGrid').innerHTML = '';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+      const res = await fetch(`/traces/${sessionId}`, { headers: authH() });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      document.getElementById('traceTitle').textContent = data.topic;
+      renderPerf(data.events);
+      renderTimeline(data.events);
+    } catch(e) {
+      document.getElementById('timeline').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+    }
+  }
+
+  function closeTrace() {
+    selectedId = null;
+    document.getElementById('tracePanel').classList.remove('open');
+    filterSessions();
+  }
+
+  // ── Performance summary ───────────────────────────────────────────────────
+  function renderPerf(events) {
+    if (!events.length) { document.getElementById('perfGrid').innerHTML = ''; return; }
+
+    // Group by node_name
+    const byNode = {};
+    for (const ev of events) {
+      if (!byNode[ev.node_name]) byNode[ev.node_name] = [];
+      byNode[ev.node_name].push(ev.latency_ms);
+    }
+    const maxLat = Math.max(...events.map(e => e.latency_ms), 1);
+
+    const nodeColors = { research:'#582CFF', write:'#8B5CF6', critique:'#00F2FF' };
+
+    const cards = Object.entries(byNode).map(([node, lats]) => {
+      const avg = lats.reduce((a,b)=>a+b,0) / lats.length;
+      const max = Math.max(...lats);
+      const min = Math.min(...lats);
+      const color = nodeColors[node] || '#A1A1A1';
+      const pct   = (avg / maxLat * 100).toFixed(1);
+      return `<div class="perf-card">
+        <div class="perf-label">${capitalize(node)} Agent</div>
+        <div class="bar-row">
+          <span class="bar-name">avg</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+          <span class="bar-val">${fmtMs(avg)}</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">max</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${(max/maxLat*100).toFixed(1)}%;background:${color}88"></div></div>
+          <span class="bar-val">${fmtMs(max)}</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">calls</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,(lats.length/3*100)).toFixed(0)}%;background:${color}44"></div></div>
+          <span class="bar-val">${lats.length}×</span>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('perfGrid').innerHTML = cards;
+  }
+
+  // ── Timeline ──────────────────────────────────────────────────────────────
+  function renderTimeline(events) {
+    if (!events.length) {
+      document.getElementById('timeline').innerHTML =
+        '<div class="empty"><div class="icon">📭</div>No trace events recorded yet.</div>';
+      return;
+    }
+
+    const dotClass = { research:'dot-research', write:'dot-write', critique:'dot-critique' };
+    const first    = new Date(events[0].created_at).getTime();
+
+    const html = events.map(ev => {
+      const ms      = new Date(ev.created_at).getTime() - first;
+      const timeStr = ms < 1000 ? ms + 'ms' : (ms/1000).toFixed(1) + 's';
+      const dot     = dotClass[ev.node_name] || 'dot-error';
+      const inKeys  = (ev.input_keys||[]).map(k=>`<span class="tl-key tl-key-in">${k}</span>`).join('');
+      const outKeys = (ev.output_keys||[]).map(k=>`<span class="tl-key tl-key-out">${k}</span>`).join('');
+      const errHtml = ev.error ? `<div class="tl-error">⚠ ${esc(ev.error)}</div>` : '';
+      return `<div class="tl-item">
+        <div class="tl-time">+${timeStr}</div>
+        <div class="tl-connector">
+          <div class="tl-dot ${dot}"></div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-card-top">
+            <span class="tl-node">${capitalize(ev.node_name)} Agent</span>
+            <span class="tl-iter">ITER ${ev.iteration}</span>
+            <span class="tl-latency">${fmtMs(ev.latency_ms)}</span>
+          </div>
+          <div class="tl-keys">
+            ${inKeys}
+            ${outKeys ? '<span style="color:var(--muted);font-size:10px;padding-top:2px">→</span>' + outKeys : ''}
+          </div>
+          ${errHtml}
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('timeline').innerHTML = html;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function fmtMs(ms) {
+    if (ms < 1000) return Math.round(ms) + ' ms';
+    return (ms/1000).toFixed(2) + ' s';
+  }
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function esc(t) { return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    loadSessions();
+    setInterval(loadSessions, 30000); // auto-refresh every 30s
+  });
+</script>
+</body>
+</html>

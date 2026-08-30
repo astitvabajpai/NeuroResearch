@@ -19,6 +19,7 @@ env/
 # Data / DB (don't commit user data)
 data/app.db
 data/*.db
+data/eval_results/
 output.log
 
 # Design files

@@ -1,9 +1,10 @@
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, List, Optional
 import operator
+
 
 class ResearchState(TypedDict):
     topic: str
-    research_notes: Annotated[list[str], operator.add]
+    research_notes: Annotated[List[str], operator.add]
     draft: str
     critique_feedback: str
     critique_score: float
@@ -16,3 +17,7 @@ class ResearchState(TypedDict):
     critique_model: str
     # Deep research mode
     deep_research: bool
+    # MCP tool names available in this run (informational)
+    mcp_tools: List[str]
+    # Observability — trace IDs propagated for Langfuse scoring
+    trace_id: Optional[str]

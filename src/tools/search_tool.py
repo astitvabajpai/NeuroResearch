@@ -1,16 +1,22 @@
 """
-Search tool with rate-limit handling and fallback.
-DuckDuckGo's HTML endpoint (used by langchain) gets rate-limited on shared IPs
-like HuggingFace Spaces. We retry with backoff and fall back to the DDGS API.
+Web search tool using DuckDuckGo (ddgs package).
+Retries with exponential backoff on rate limits, falls back to
+the DuckDuckGo Instant Answer API if all retries are exhausted.
 """
 import time
 import random
 from langchain_core.tools import Tool
 
 
-def _ddg_search_with_retry(query: str, max_results: int = 5, retries: int = 4) -> str:
-    """Try DuckDuckGo search with exponential backoff on rate limits."""
-    from duckduckgo_search import DDGS
+def _ddg_search(query: str, max_results: int = 5, retries: int = 4) -> str:
+    """Search the web using DuckDuckGo with retry on rate limits."""
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            return _fallback_search(query)
 
     for attempt in range(retries):
         try:
@@ -28,55 +34,46 @@ def _ddg_search_with_retry(query: str, max_results: int = 5, retries: int = 4) -
 
         except Exception as e:
             err = str(e)
-            if "202" in err or "Ratelimit" in err or "rate" in err.lower():
+            if "202" in err or "ratelimit" in err.lower() or "rate" in err.lower():
                 wait = (2 ** attempt) + random.uniform(1, 3)
-                print(f"[Search] Rate limited (attempt {attempt+1}/{retries}), waiting {wait:.1f}s…")
+                print(f"[Search] Rate limited (attempt {attempt+1}/{retries}), waiting {wait:.1f}s...")
                 time.sleep(wait)
                 continue
-            # Non-rate-limit error — return what we have
             print(f"[Search] Error: {e}")
             return _fallback_search(query)
 
-    # All retries exhausted — use fallback
     print("[Search] All retries exhausted, using fallback.")
     return _fallback_search(query)
 
 
 def _fallback_search(query: str) -> str:
-    """
-    Fallback: use DuckDuckGo Instant Answer API (different endpoint, less rate-limited).
-    Returns a best-effort result so the pipeline can continue.
-    """
+    """DuckDuckGo Instant Answer API — different endpoint, less rate-limited."""
     try:
-        import urllib.request, urllib.parse, json
+        import urllib.request
+        import urllib.parse
+        import json
         params = urllib.parse.urlencode({
-            "q": query,
-            "format": "json",
-            "no_html": "1",
-            "skip_disambig": "1",
+            "q": query, "format": "json",
+            "no_html": "1", "skip_disambig": "1",
         })
         url = f"https://api.duckduckgo.com/?{params}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read())
-
         parts = []
         if data.get("AbstractText"):
             parts.append(f"**{data.get('Heading', query)}**\n{data['AbstractText']}")
         for topic in data.get("RelatedTopics", [])[:4]:
             if isinstance(topic, dict) and topic.get("Text"):
                 parts.append(topic["Text"])
-
         if parts:
             return "\n\n".join(parts)
     except Exception as e:
-        print(f"[Search] Fallback also failed: {e}")
+        print(f"[Search] Fallback failed: {e}")
 
-    # Last resort — return a note so the LLM can still attempt a response
     return (
-        f"Search unavailable due to rate limiting. "
-        f"Please generate a research response about '{query}' "
-        f"based on your training knowledge."
+        f"Search unavailable for '{query}'. "
+        f"Please generate a research response based on your training knowledge."
     )
 
 
@@ -84,5 +81,5 @@ def get_search_tool() -> Tool:
     return Tool(
         name="web_search",
         description="Search the web for information about a topic.",
-        func=_ddg_search_with_retry,
+        func=_ddg_search,
     )
