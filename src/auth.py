@@ -17,9 +17,11 @@ from src.database import get_user_by_id
 def _get_secret() -> str:
     try:
         from src.config.settings import get_settings
-        return get_settings().JWT_SECRET
+        s = get_settings()
+        # Support JWT_SECRET (local) and JWTSECRET (HF Spaces)
+        return s.JWT_SECRET or s.JWTSECRET or "neuroresearch-change-this-in-production"
     except Exception:
-        return os.getenv("JWT_SECRET", "neuroresearch-change-this-in-production")
+        return os.getenv("JWT_SECRET", os.getenv("JWTSECRET", "neuroresearch-change-this-in-production"))
 
 
 ALGORITHM         = "HS256"

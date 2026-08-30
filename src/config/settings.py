@@ -5,7 +5,14 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # ── Required ──────────────────────────────────────────────────────────────
-    GROQ_API_KEY: str
+    GROQ_API_KEY: str = ""
+    # HF Spaces doesn't allow underscores in secret names,
+    # so also read GROQAPIKEY as a fallback
+    GROQAPIKEY: str = ""
+
+    JWT_SECRET: str = "neuroresearch-change-this-in-production"
+    # HF Spaces fallback (no underscores)
+    JWTSECRET: str = ""
     JWT_SECRET: str = "neuroresearch-change-this-in-production"
 
     # ── Optional HF token (only needed if using HF embeddings locally) ────────

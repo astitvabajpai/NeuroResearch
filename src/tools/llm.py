@@ -29,9 +29,14 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def _get_groq_token() -> str:
     from src.config.settings import get_settings
-    token = get_settings().GROQ_API_KEY or ""
+    s = get_settings()
+    # Support both GROQ_API_KEY (local) and GROQAPIKEY (HF Spaces — no underscores allowed)
+    token = s.GROQ_API_KEY or s.GROQAPIKEY or ""
     if not token:
-        raise RuntimeError("GROQ_API_KEY is not set in .env")
+        raise RuntimeError(
+            "Groq API key not set. Add GROQ_API_KEY to .env (local) "
+            "or GROQAPIKEY to HF Spaces secrets."
+        )
     return token
 
 
