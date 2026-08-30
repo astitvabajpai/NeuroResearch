@@ -1,3 +1,12 @@
+---
+title: NeuroResearch
+emoji: 🧠
+colorFrom: purple
+colorTo: blue
+sdk: docker
+pinned: false
+---
+
 # 🧠 NeuroResearch — Self-Correcting Multi-Agent Research System
 
 A production-grade AI research pipeline built with **LangGraph**, **FastAPI**, and **Groq AI**.
