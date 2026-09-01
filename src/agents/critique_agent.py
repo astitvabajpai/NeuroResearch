@@ -4,89 +4,41 @@ from src.agents.base_agent import BaseAgent
 from src.state.research_state import ResearchState
 
 STANDARD_PROMPT = ChatPromptTemplate.from_template("""\
-You are a calibrated research quality evaluator. Score this report fairly and accurately.
+Score this research report on a scale of 0.0 to 1.0.
 
 Topic: {topic}
 
-Report to evaluate:
+Report:
 {draft}
 
-Scoring rubric — evaluate each dimension and combine into a final score:
+Scoring guide:
+- 0.90-1.00: Excellent — specific facts, all 4 sections present, 500+ words, clear analysis
+- 0.80-0.89: Good — mostly complete with minor gaps in detail or depth  
+- 0.70-0.79: Fair — some sections thin or lacking specific evidence
+- Below 0.70: Needs significant improvement — major gaps or too short
 
-1. ACCURACY (0-1): Are the facts, statistics, and claims correct and specific?
-   - 0.9-1.0: All claims are verifiable and precise with specific details
-   - 0.7-0.9: Most claims are accurate with some vague statements
-   - 0.5-0.7: Some inaccuracies or too many unsupported generalizations
-   - Below 0.5: Significant factual issues or mostly vague
-
-2. COMPLETENESS (0-1): Does it fully cover the topic?
-   - 0.9-1.0: Comprehensive coverage of all key aspects with 500+ words
-   - 0.7-0.9: Good coverage with minor gaps
-   - 0.5-0.7: Missing important aspects or too brief
-   - Below 0.5: Major gaps or very superficial
-
-3. CLARITY (0-1): Is it well-written and well-structured?
-   - 0.9-1.0: Excellent prose, clear headings, flows logically
-   - 0.7-0.9: Generally clear with minor issues
-   - 0.5-0.7: Some confusing parts or poor structure
-   - Below 0.5: Difficult to follow
-
-IMPORTANT CALIBRATION NOTES:
-- A solid, specific, well-structured 500+ word report on a technical topic should score 0.80-0.90
-- Only give below 0.7 if there are real problems (vague, too short, inaccurate)
-- Do not penalize for not being a PhD dissertation — this is a research brief
-- A report that covers all 4 sections with specific details deserves at least 0.82
-
-Final score = average of the three dimensions.
-
-Respond EXACTLY in this format — nothing else:
-SCORE: <single float between 0.0 and 1.0>
-FEEDBACK: <2-3 specific, actionable improvements for the next iteration>
+Respond in this exact format with nothing else:
+SCORE: [number between 0.0 and 1.0]
+FEEDBACK: [2-3 specific improvements for the next draft]
 """)
 
 DEEP_PROMPT = ChatPromptTemplate.from_template("""\
-You are a calibrated senior research reviewer. Evaluate this comprehensive report fairly.
+Score this comprehensive research report on a scale of 0.0 to 1.0.
 
 Topic: {topic}
 
-Report to evaluate:
+Report:
 {draft}
 
-Scoring rubric:
+Scoring guide:
+- 0.90-1.00: All 9 sections present, 900+ words, specific evidence throughout, strong analysis
+- 0.80-0.89: Most sections complete with good evidence, minor gaps
+- 0.70-0.79: Some sections thin or missing, limited specific evidence
+- Below 0.70: Major sections missing or very superficial
 
-1. DEPTH & COMPREHENSIVENESS (0-1):
-   - 0.9-1.0: All 9 sections present, each with substantive content, 900+ words
-   - 0.7-0.9: Most sections present and substantive, minor gaps
-   - 0.5-0.7: Some sections thin or missing
-   - Below 0.5: Incomplete structure or very shallow
-
-2. EVIDENCE QUALITY (0-1):
-   - 0.9-1.0: Specific statistics, dates, named systems/papers/companies throughout
-   - 0.7-0.9: Good use of evidence with some vague areas
-   - 0.5-0.7: Limited evidence, mostly general statements
-   - Below 0.5: No concrete evidence
-
-3. INSIGHT QUALITY (0-1):
-   - 0.9-1.0: Analysis goes beyond summarizing — shows connections, implications, nuance
-   - 0.7-0.9: Some original analysis with good synthesis
-   - 0.5-0.7: Mostly descriptive without analysis
-   - Below 0.5: Surface-level only
-
-4. CLARITY & STRUCTURE (0-1):
-   - 0.9-1.0: Publication-quality prose, excellent organization
-   - 0.7-0.9: Clear and well-organized
-   - 0.5-0.7: Some structural or clarity issues
-
-CALIBRATION:
-- A thorough 900+ word report with specific evidence across all sections should score 0.82-0.92
-- Reserve 0.95+ for truly exceptional reports with unique insight and comprehensive evidence
-- Only give below 0.7 for reports with real structural or accuracy problems
-
-Final score = average of the four dimensions.
-
-Respond EXACTLY in this format — nothing else:
-SCORE: <single float between 0.0 and 1.0>
-FEEDBACK: <3-4 specific, actionable improvements addressing the weakest dimensions>
+Respond in this exact format with nothing else:
+SCORE: [number between 0.0 and 1.0]
+FEEDBACK: [3-4 specific improvements for the next draft]
 """)
 
 

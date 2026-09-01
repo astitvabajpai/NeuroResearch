@@ -3,56 +3,43 @@ from src.agents.base_agent import BaseAgent
 from src.state.research_state import ResearchState
 
 STANDARD_PROMPT = ChatPromptTemplate.from_template("""\
-You are an expert Research Analyst. Your job is to extract rich, detailed, factual findings \
-from the search results below and turn them into high-quality research notes.
+You are a Research Analyst. Read the search results below and extract exactly 5 key findings about the topic.
 
 Topic: {topic}
 
 Search Results:
 {search_results}
 
-Instructions:
-- Extract 5 key findings that are specific, factual, and directly relevant to the topic.
-- Each finding must be 2-3 sentences long with concrete details, numbers, or examples.
-- Include source URLs when present in the search results.
-- Cover: core facts, recent developments, real-world applications, and key statistics.
-- Do NOT write generic statements. Every finding must add unique, verifiable value.
+Rules:
+- Each finding must be 2-3 sentences with specific facts, numbers, or examples.
+- Include source URLs from the search results where available.
+- No intro, no conclusion, no meta-commentary.
 
-Format — output ONLY this, nothing else:
-• [Finding 1: specific fact with detail and evidence]
-• [Finding 2: specific fact with detail and evidence]
-• [Finding 3: specific fact with detail and evidence]
-• [Finding 4: specific fact with detail and evidence]
-• [Finding 5: specific fact with detail and evidence]
+Output exactly 5 bullet points:
+• [finding 1]
+• [finding 2]
+• [finding 3]
+• [finding 4]
+• [finding 5]
 """)
 
 DEEP_PROMPT = ChatPromptTemplate.from_template("""\
-You are a Senior Research Analyst conducting a comprehensive investigation. \
-Extract deep, publication-quality research notes from the search results below.
+You are a Research Analyst. Read the search results below and extract 8-10 detailed findings about the topic.
 
 Topic: {topic}
 
 Search Results:
 {search_results}
 
-Instructions:
-- Extract 8-10 detailed findings covering ALL of the following dimensions:
-  1. Core definitions and foundational concepts
-  2. Historical context and how the field evolved
-  3. Current state-of-the-art and recent breakthroughs (with dates/versions where available)
-  4. Key statistics, benchmarks, and quantitative data
-  5. Leading researchers, institutions, or companies driving progress
-  6. Real-world applications and industry adoption (with specific examples)
-  7. Open challenges, limitations, and unsolved problems
-  8. Competing approaches or schools of thought
-  9. Future directions and emerging trends
-- Each finding must be 3-4 sentences with specific names, numbers, and citations.
-- Include source URLs from the search results wherever available.
-- Do NOT be vague. Precision and specificity are critical.
+Rules:
+- Each finding must be 3-4 sentences with specific names, dates, numbers, and evidence.
+- Include source URLs from the search results where available.
+- Cover: definitions, recent developments, statistics, applications, challenges, future trends.
+- No intro, no conclusion, no meta-commentary.
 
-Format — output ONLY numbered findings, nothing else:
-1. [Detailed finding with evidence, numbers, and sources]
-2. [Detailed finding with evidence, numbers, and sources]
+Output numbered findings only:
+1. [finding]
+2. [finding]
 ...
 """)
 
@@ -81,16 +68,12 @@ class ResearchAgent(BaseAgent):
 
         if deep:
             r1 = self.search_tool.run(topic)
-            r2 = self.search_tool.run(f"latest research advances {topic} 2024 2025")
-            r3 = self.search_tool.run(f"{topic} applications examples case studies")
-            search_results = (
-                f"=== Web Search 1: Core Topic ===\n{r1}\n\n"
-                f"=== Web Search 2: Latest Advances ===\n{r2}\n\n"
-                f"=== Web Search 3: Applications ===\n{r3}"
-            )
+            r2 = self.search_tool.run(f"latest {topic} 2024 2025")
+            r3 = self.search_tool.run(f"{topic} applications examples")
+            search_results = f"=== Search 1 ===\n{r1}\n\n=== Search 2 ===\n{r2}\n\n=== Search 3 ===\n{r3}"
         else:
             r1 = self.search_tool.run(topic)
-            r2 = self.search_tool.run(f"{topic} overview key facts")
+            r2 = self.search_tool.run(f"{topic} key facts overview")
             search_results = f"=== Search 1 ===\n{r1}\n\n=== Search 2 ===\n{r2}"
 
         prompt     = DEEP_PROMPT if deep else STANDARD_PROMPT

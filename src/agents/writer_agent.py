@@ -3,100 +3,72 @@ from src.agents.base_agent import BaseAgent
 from src.state.research_state import ResearchState
 
 STANDARD_PROMPT = ChatPromptTemplate.from_template("""\
-You are an expert Technical Writer. Write a high-quality, well-structured research report \
-that would score 0.95+ on accuracy, completeness, and clarity.
+Write a research report on the topic below using the provided research notes.
 
 Topic: {topic}
 
-Research Notes (use ALL of these findings — do not ignore any):
+Research Notes:
 {notes}
 
-Critique from previous iteration (if any — address every point):
-{feedback}
+Previous critique to address: {feedback}
 
-Requirements — your report MUST:
-✓ Use ALL findings from the research notes with specific details
-✓ Include concrete numbers, statistics, dates, and named examples
-✓ Be written in clear, professional prose — no vague generalities
-✓ Reach at least 500 words
-✓ Use EXACTLY these section headings (## markdown):
+Write the report using these exact section headings:
 
 ## Introduction
-Write 3 paragraphs covering: what the topic is, why it matters today, \
-and the scope of this report. Name specific applications or use cases.
+Three paragraphs. What the topic is, why it matters, and what this report covers.
 
 ## Key Findings
-Write a numbered list of 5-7 findings. Each item must be 2-3 sentences \
-with specific facts, statistics, or named examples from the research notes. \
-Do not write one-liners.
+A numbered list of 5-7 findings. Each item is 2-3 sentences with specific facts and examples from the notes.
 
 ## Analysis
-Write 3 paragraphs that: (1) identify patterns across the findings, \
-(2) explain implications for practitioners or researchers, \
-(3) connect findings to broader trends in the field.
+Three paragraphs analyzing patterns, implications, and connections between the findings.
 
 ## Conclusion
-Write 2 paragraphs: (1) synthesize the most important insights, \
-(2) give a concrete outlook — what will happen next in this field.
+Two paragraphs summarizing key insights and the outlook for this topic.
 
-Start writing the report directly. Do not include any preamble.
+Requirements: minimum 500 words, use specific details from the research notes, write in clear professional prose.
 """)
 
 DEEP_PROMPT = ChatPromptTemplate.from_template("""\
-You are a Senior Technical Writer producing a publication-quality comprehensive research report \
-that would score 0.95+ on depth, accuracy, evidence quality, and clarity.
+Write a comprehensive research report on the topic below using the provided research notes.
 
 Topic: {topic}
 
-Research Notes (synthesize ALL of these — do not omit any findings):
+Research Notes:
 {notes}
 
-Critique from previous iteration (if any — address every single point):
-{feedback}
+Previous critique to address: {feedback}
 
-Requirements — your report MUST:
-✓ Synthesize ALL research findings with specific details, numbers, and named sources
-✓ Include statistics, benchmark results, dates, version numbers, and named examples
-✓ Write in authoritative, publication-quality prose
-✓ Reach at least 900 words
-✓ Use EXACTLY these section headings (## markdown):
+Write the report using these exact section headings:
 
 ## Executive Summary
-3-4 sentences. State the most important conclusion and 2-3 key numbers or facts.
+Three sentences summarizing the most important findings and their significance.
 
 ## Introduction
-4 paragraphs: (1) background and context, (2) why this matters now, \
-(3) scope and methodology of this report, (4) what the reader will learn.
+Four paragraphs covering background, significance, scope of this report, and what the reader will learn.
 
 ## Current State of the Field
-4 paragraphs on where things stand today. Name specific systems, papers, \
-companies, or technologies. Include dates and version numbers where relevant.
+Four paragraphs on where things stand today with specific systems, papers, companies, and dates.
 
 ## Key Findings
-Numbered list of 8-10 findings. Each must be 3-4 sentences with evidence. \
-Do not write vague statements — every finding must be verifiable and specific.
+A numbered list of 8-10 findings. Each item is 3-4 sentences with specific evidence and examples.
 
 ## Technical Deep Dive
-3 paragraphs analyzing the most technically complex or novel aspects. \
-Explain mechanisms, architectures, or methods with precision.
+Three paragraphs analyzing the most complex aspects in detail.
 
 ## Applications & Real-World Impact
-3 paragraphs with specific deployment examples, company names, \
-case studies, and quantitative outcomes where available.
+Three paragraphs with specific deployment examples, company names, and outcomes.
 
 ## Challenges & Limitations
-Numbered list of 4-5 challenges with specific explanations of why they are hard \
-and what is being done to address them.
+A numbered list of 4-5 challenges with explanations of why they are hard.
 
 ## Future Directions
-3 paragraphs on concrete next steps: what research is underway, \
-what will likely happen in 1-3 years, and what open questions remain.
+Three paragraphs on what is coming next with concrete examples and timelines.
 
 ## Conclusion
-3 paragraphs synthesizing everything: key takeaways, significance, \
-and a clear-eyed assessment of where the field is headed.
+Three paragraphs synthesizing everything and giving a clear assessment of where the field is headed.
 
-Start writing the report directly. Do not include any preamble or meta-commentary.
+Requirements: minimum 900 words, use specific details and numbers from the research notes, write in clear professional prose.
 """)
 
 
@@ -118,9 +90,9 @@ class WriterAgent(BaseAgent):
         self._initialize(model_id, deep=deep)
 
         notes    = "\n\n".join(state["research_notes"])
-        # Pass prior critique feedback so the writer can address it directly
         feedback = state.get("critique_feedback", "").strip()
-        feedback = feedback if feedback else "This is the first draft — focus on completeness and detail."
+        if not feedback:
+            feedback = "First draft — focus on completeness and use all research notes."
 
         prompt    = DEEP_PROMPT if deep else STANDARD_PROMPT
         chain     = prompt | self.llm
