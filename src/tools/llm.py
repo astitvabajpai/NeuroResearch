@@ -4,6 +4,7 @@ All 5 models are free, confirmed working at 2048 tokens (deep research).
 Falls back through the rotation automatically on rate limits.
 """
 from __future__ import annotations
+import re
 import time
 import logging
 
@@ -27,10 +28,22 @@ _ROTATION = [m["id"] for m in AVAILABLE_MODELS]
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
+def _strip_thinking(text: str) -> str:
+    """
+    Remove <think>...</think> blocks produced by reasoning models (e.g. Qwen 3.6).
+    Also strips any leading/trailing whitespace left behind.
+    """
+    # Remove <think> blocks (including multiline)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # Also handle unclosed <think> blocks (model cut off mid-thought)
+    text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
 def _get_groq_token() -> str:
     from src.config.settings import get_settings
     s = get_settings()
-    # Support both GROQ_API_KEY (local) and GROQAPIKEY (HF Spaces — no underscores allowed)
+    # Support GROQ_API_KEY (local .env) and GROQAPIKEY (HF Spaces — no underscores)
     token = s.GROQ_API_KEY or s.GROQAPIKEY or ""
     if not token:
         raise RuntimeError(
@@ -42,7 +55,7 @@ def _get_groq_token() -> str:
 
 def _call_groq(model_id: str, messages: list, max_tokens: int,
                temperature: float, token: str) -> str | None:
-    """Single Groq call. Returns text on success, None on rate-limit/unavailable."""
+    """Single Groq call. Returns cleaned text on success, None on rate-limit/unavailable."""
     import requests
     try:
         resp = requests.post(
@@ -55,7 +68,8 @@ def _call_groq(model_id: str, messages: list, max_tokens: int,
             timeout=60,
         )
         if resp.ok:
-            return resp.json()["choices"][0]["message"]["content"]
+            text = resp.json()["choices"][0]["message"]["content"]
+            return _strip_thinking(text)
         if resp.status_code == 429:
             logger.warning("[LLM] %s rate-limited, trying next model", model_id)
             return None
@@ -73,10 +87,11 @@ def get_llm(model_id: str | None = None, deep: bool = False):
     """
     Return a LangChain-compatible chat LLM backed by Groq.
     Automatically rotates through all 5 models if the selected one is rate-limited.
+    <think> blocks from reasoning models are stripped automatically.
     """
     from src.config.settings import get_settings
-    settings  = get_settings()
-    model_id  = model_id or settings.HF_MODEL_ID or DEFAULT_MODEL
+    settings   = get_settings()
+    model_id   = model_id or settings.HF_MODEL_ID or DEFAULT_MODEL
     max_tokens = 2048 if deep else 1024
     groq_token = _get_groq_token()
 
@@ -85,9 +100,9 @@ def get_llm(model_id: str | None = None, deep: bool = False):
     from langchain_core.outputs import ChatGeneration, ChatResult
     from typing import Any, List, Optional
 
-    _mid   = model_id
-    _tok   = groq_token
-    _maxt  = max_tokens
+    _mid  = model_id
+    _tok  = groq_token
+    _maxt = max_tokens
 
     class _GroqLLM(BaseChatModel):
         model:          str   = _mid
@@ -156,7 +171,6 @@ def get_hf_llm(model_id: str | None = None, deep: bool = False):
 
 
 def get_embeddings():
-    """Embeddings still use HuggingFace (local, no API key needed)."""
     from langchain_huggingface import HuggingFaceEmbeddings
     from src.config.settings import get_settings
     return HuggingFaceEmbeddings(model_name=get_settings().EMBEDDING_MODEL)
