@@ -1,6 +1,9 @@
+import logging
 from langchain_core.prompts import ChatPromptTemplate
 from src.agents.base_agent import BaseAgent
 from src.state.research_state import ResearchState
+
+logger = logging.getLogger(__name__)
 
 STANDARD_PROMPT = ChatPromptTemplate.from_template("""\
 Write a research report on the topic below using the provided research notes.
@@ -98,4 +101,10 @@ class WriterAgent(BaseAgent):
         chain     = prompt | self.llm
         draft     = chain.invoke({"topic": state["topic"], "notes": notes, "feedback": feedback})
         draft_str = draft.content if hasattr(draft, "content") else str(draft)
+
+        # Safety: if output is empty or just whitespace, return a note
+        if not draft_str.strip():
+            logger.warning("[WriterAgent] LLM returned empty draft")
+            draft_str = f"## Introduction\n\nResearch report on: {state['topic']}\n\n(Draft generation failed — please retry)"
+
         return {"draft": draft_str}
