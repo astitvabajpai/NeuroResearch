@@ -11,18 +11,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 AVAILABLE_MODELS = [
-    {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B",  "tag": "Recommended"},
-    {"id": "qwen/qwen3.6-27b",        "name": "Qwen 3.6 27B",   "tag": "Best Depth"},
-    {"id": "openai/gpt-oss-120b",     "name": "GPT OSS 120B",   "tag": "Most Powerful"},
-    {"id": "openai/gpt-oss-20b",      "name": "GPT OSS 20B",    "tag": "Balanced"},
-    {"id": "llama-3.1-8b-instant",    "name": "Llama 3.1 8B",   "tag": "Fastest"},
+    {"id": "openai/gpt-oss-20b",  "name": "GPT OSS 20B",   "tag": "Recommended"},
+    {"id": "openai/gpt-oss-120b", "name": "GPT OSS 120B",  "tag": "Most Powerful"},
+    {"id": "qwen/qwen3.6-27b",    "name": "Qwen 3.6 27B",  "tag": "Deep Reasoning"},
 ]
 
-DEFAULT_MODEL        = "llama-3.3-70b-versatile"
-DEFAULT_WRITER_MODEL = "llama-3.3-70b-versatile"
-DEFAULT_CRITIC_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL        = "openai/gpt-oss-20b"
+DEFAULT_WRITER_MODEL = "openai/gpt-oss-20b"
+DEFAULT_CRITIC_MODEL = "openai/gpt-oss-20b"
 
-# Rotation order when primary model is rate-limited
+# Rotation order — tried in sequence when primary model is unavailable
 _ROTATION = [m["id"] for m in AVAILABLE_MODELS]
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -30,13 +28,24 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def _strip_thinking(text: str) -> str:
     """
-    Remove <think>...</think> blocks produced by reasoning models (e.g. Qwen 3.6).
-    Also strips any leading/trailing whitespace left behind.
+    Handle <think>...</think> blocks from reasoning models (Qwen 3.6, etc).
+    
+    Strategy:
+    1. If </think> exists, take everything AFTER it (the actual answer)
+    2. If only <think> with no closing tag, strip everything from <think> onward
+    3. Otherwise return text as-is
     """
-    # Remove <think> blocks (including multiline)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    # Also handle unclosed <think> blocks (model cut off mid-thought)
-    text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL)
+    if "</think>" in text:
+        # Take content after the last </think> tag
+        after = text.split("</think>")[-1].strip()
+        if after:
+            return after
+        # Edge case: content is INSIDE think block only — extract it
+        inner = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
+        return inner.group(1).strip() if inner else text.strip()
+    elif "<think>" in text:
+        # Unclosed think block — strip everything from <think> onward
+        return text[:text.index("<think>")].strip()
     return text.strip()
 
 
@@ -57,6 +66,7 @@ def _call_groq(model_id: str, messages: list, max_tokens: int,
                temperature: float, token: str) -> str | None:
     """Single Groq call. Returns cleaned text on success, None on rate-limit/unavailable."""
     import requests
+    logger.info("[LLM] Calling %s (max_tokens=%d)", model_id, max_tokens)
     try:
         resp = requests.post(
             GROQ_API_URL,
@@ -68,8 +78,15 @@ def _call_groq(model_id: str, messages: list, max_tokens: int,
             timeout=60,
         )
         if resp.ok:
-            text = resp.json()["choices"][0]["message"]["content"]
-            return _strip_thinking(text)
+            text    = resp.json()["choices"][0]["message"]["content"]
+            cleaned = _strip_thinking(text)
+            logger.info("[LLM] %s -> %d chars", model_id, len(cleaned))
+            if not cleaned.strip():
+                logger.warning("[LLM] %s empty after think-strip, raw length=%d", model_id, len(text))
+                # Don't return None — let rotation handle it only if truly empty
+                # This can happen if model outputs ONLY thinking; try next
+                return None
+            return cleaned
         if resp.status_code == 429:
             logger.warning("[LLM] %s rate-limited, trying next model", model_id)
             return None

@@ -52,10 +52,10 @@ class ResearchAgent(BaseAgent):
 
     def _initialize(self, model_id: str | None = None, deep: bool = False):
         target = model_id or self.model_id
-        if self.llm is None or target != self.model_id:
-            self.model_id = target
-            from src.tools.llm import get_llm
-            self.llm = get_llm(self.model_id, deep=deep)
+        # Always create fresh LLM — no caching so rotation always works
+        self.model_id = target
+        from src.tools.llm import get_llm
+        self.llm = get_llm(self.model_id, deep=deep)
         if self.search_tool is None:
             from src.tools.search_tool import get_search_tool
             self.search_tool = get_search_tool()

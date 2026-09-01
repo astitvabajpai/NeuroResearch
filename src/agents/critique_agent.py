@@ -124,10 +124,9 @@ class CritiqueAgent(BaseAgent):
 
     def _initialize(self, model_id: str | None = None, deep: bool = False):
         target = model_id or self.model_id
-        if self.llm is None or target != self.model_id:
-            self.model_id = target
-            from src.tools.llm import get_llm
-            self.llm = get_llm(self.model_id, deep=deep)
+        self.model_id = target
+        from src.tools.llm import get_llm
+        self.llm = get_llm(self.model_id, deep=deep)
 
     def invoke(self, state: ResearchState) -> dict:
         model_id = state.get("critique_model") or self.model_id

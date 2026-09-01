@@ -5,16 +5,21 @@ Graph topology:
     research → write → critique ──(score >= threshold or max iter)──► END
                   ▲                        │
                   └──────── revise ────────┘
+
+NOTE: The graph is rebuilt on every call to get_research_app() so that
+agent instances are always fresh and model rotation always works correctly.
 """
 
 from langgraph.graph import StateGraph, END
 from src.state.research_state import ResearchState
-from src.agents.research_agent import ResearchAgent
-from src.agents.writer_agent import WriterAgent
-from src.agents.critique_agent import CritiqueAgent
 
 
 def build_graph():
+    # Import agents fresh each build so they pick up latest code
+    from src.agents.research_agent import ResearchAgent
+    from src.agents.writer_agent   import WriterAgent
+    from src.agents.critique_agent import CritiqueAgent
+
     research_agent = ResearchAgent()
     writer_agent   = WriterAgent()
     critique_agent = CritiqueAgent()
@@ -46,15 +51,14 @@ def build_graph():
     return workflow.compile()
 
 
-# Singleton — built once, reused across requests
-_research_app = None
-
-
 def get_research_app():
-    global _research_app
-    if _research_app is None:
-        _research_app = build_graph()
-    return _research_app
+    """Always build fresh — no singleton — so agents are never stale."""
+    return build_graph()
+
+
+def _reset_app():
+    """No-op kept for backward compatibility with debug scripts."""
+    pass
 
 
 def build_initial_state(
