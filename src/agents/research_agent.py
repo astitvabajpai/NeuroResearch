@@ -180,7 +180,7 @@ class ResearchAgent(BaseAgent):
         Returns (rag_built: bool, formatted_context: str).
         """
         try:
-            from src.tools.fetcher import fetch_pages_from_search, extract_urls_from_search
+            from src.tools.fetcher import extract_urls_from_search
             from src.tools.vector_store import (
                 build_index, query as vs_query,
                 format_chunks_for_prompt, is_available,

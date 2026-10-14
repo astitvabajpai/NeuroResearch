@@ -363,28 +363,41 @@ def _md_to_html(text: str) -> str:
     while i < len(lines):
         s = lines[i].strip()
         if re.match(r"^### ", s):
-            out.append(f"<h3>{_inline(s[4:])}</h3>"); i += 1; continue
+            out.append(f"<h3>{_inline(s[4:])}</h3>")
+            i += 1
+            continue
         if re.match(r"^## ", s):
-            out.append(f"<h2>{_inline(s[3:])}</h2>"); i += 1; continue
+            out.append(f"<h2>{_inline(s[3:])}</h2>")
+            i += 1
+            continue
         if re.match(r"^# ", s):
-            out.append(f"<h2>{_inline(s[2:])}</h2>"); i += 1; continue
+            out.append(f"<h2>{_inline(s[2:])}</h2>")
+            i += 1
+            continue
         if re.match(r"^---+$", s):
-            out.append("<hr>"); i += 1; continue
+            out.append("<hr>")
+            i += 1
+            continue
         if re.match(r"^\d+\.\s+", s):
             out.append("<ol>")
             while i < len(lines) and re.match(r"^\d+\.\s+", lines[i].strip()):
                 out.append(f"<li>{_inline(re.sub(r'^[0-9]+[.] ', '', lines[i].strip()))}</li>")
                 i += 1
-            out.append("</ol>"); continue
+            out.append("</ol>")
+            continue
         if re.match(r"^[-*•]\s+", s):
             out.append("<ul>")
             while i < len(lines) and re.match(r"^[-*•]\s+", lines[i].strip()):
                 out.append(f"<li>{_inline(re.sub(r'^[-*•] ', '', lines[i].strip()))}</li>")
                 i += 1
-            out.append("</ul>"); continue
+            out.append("</ul>")
+            continue
         if s == "":
-            out.append("<br>"); i += 1; continue
-        out.append(f"<p>{_inline(s)}</p>"); i += 1
+            out.append("<br>")
+            i += 1
+            continue
+        out.append(f"<p>{_inline(s)}</p>")
+        i += 1
     return "\n".join(out)
 
 

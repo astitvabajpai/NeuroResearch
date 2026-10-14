@@ -24,7 +24,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -122,7 +122,7 @@ class EvalReport:
         lines = [
             "",
             "=" * 80,
-            f"  NeuroResearch Eval Report",
+            "  NeuroResearch Eval Report",
             f"  Model   : {self.model_id or 'default'}",
             f"  Started : {self.started_at}",
             "=" * 80,
