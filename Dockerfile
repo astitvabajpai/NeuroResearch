@@ -1,27 +1,43 @@
 FROM python:3.11-slim
 
-# System deps
+# ── System dependencies ────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
+    build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# ── Install uv + uvx (required for MCP servers) ───────────────────────────────
+RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-# Install Python deps first (layer-cached)
+# ── Python dependencies (layer-cached) ────────────────────────────────────────
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
+# ── Copy source ────────────────────────────────────────────────────────────────
 COPY . .
 
-# Create data directory for SQLite persistence
-RUN mkdir -p /data && chmod 777 /data
+# ── Create required directories ────────────────────────────────────────────────
+RUN mkdir -p /data data/eval_results && chmod 777 /data
 
-# HF Spaces mounts persistent storage at /data automatically
-# The DB_PATH in database.py detects /data and uses it when writable
+# ── Pre-download embedding model so first run isn't slow ──────────────────────
+# Skip on HF Spaces (SPACE_ID is set) — RAG is disabled there anyway
+ARG SPACE_ID=""
+RUN if [ -z "$SPACE_ID" ]; then \
+      python -c "\
+from langchain_huggingface import HuggingFaceEmbeddings; \
+HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2', model_kwargs={'device':'cpu'}); \
+print('Embedding model cached')" || echo "Embedding pre-download skipped"; \
+    fi
 
-# HF Spaces runs on port 7860
+# ── Pre-install mcp-server-fetch via uvx so first MCP call is instant ─────────
+RUN uvx mcp-server-fetch --help > /dev/null 2>&1 || echo "mcp-server-fetch pre-install skipped"
+
+# ── HF Spaces persistent storage ──────────────────────────────────────────────
+# HF Spaces mounts /data as persistent disk automatically
+# database.py detects /data and uses it when writable
+
 EXPOSE 7860
 
-# Use app.py entrypoint (standard for HF Spaces)
 CMD ["python", "app.py"]

@@ -1,21 +1,30 @@
 """
 FastAPI application — HTTP endpoints + SSE streaming research pipeline.
+
+Features added:
+- RAG: per-session FAISS vector store built from fetched page content
+- MCP: tool registry with fetch / Brave Search / arXiv servers
+- Per-user asyncio.Semaphore rate limiting on /research/stream
+- CORS origins loaded from CORS_ORIGINS env var
+- 4-rubric critique scores surfaced in SSE events
+- Topic length validation on request
 """
 
 import asyncio
 import json
 import time
 import uuid
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Dict, Optional
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.auth import create_token, get_current_user, hash_password, verify_password
 from src.database import (
@@ -23,18 +32,40 @@ from src.database import (
     get_sessions_for_user, get_user_by_email, init_db, save_session,
 )
 
-# ── Lifespan (replaces deprecated @app.on_event) ──────────────────────────────
+# ── Per-user rate limiting (Fix #8) ───────────────────────────────────────────
+# One concurrent research run per user.  Attempting a second returns HTTP 429.
+_user_semaphores: Dict[int, asyncio.Semaphore] = defaultdict(lambda: asyncio.Semaphore(1))
+
+
+# ── Lifespan ───────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+    _log = logging.getLogger(__name__)
     init_db()
     try:
         from src.observability.tracing import init_observability
         init_observability()
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Observability init failed: %s", exc)
+        _log.warning("Observability init failed: %s", exc)
+    # Log RAG availability
+    try:
+        from src.tools.vector_store import is_available as rag_available
+        _log.info("[Startup] RAG (FAISS): %s", "enabled" if rag_available() else "disabled (install faiss-cpu)")
+    except Exception:
+        pass
+    # Log MCP availability
+    try:
+        from src.mcp.tool_registry import get_mcp_tool_names, is_mcp_available
+        if is_mcp_available():
+            _log.info("[Startup] MCP tools: %s", get_mcp_tool_names())
+        else:
+            _log.info("[Startup] MCP: disabled (install mcp + uvx)")
+    except Exception:
+        pass
     yield
+
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -43,14 +74,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Fix #13: load allowed origins from settings instead of hardcoding "*"
+def _get_cors_origins() -> list[str]:
+    try:
+        from src.config.settings import get_settings
+        return get_settings().cors_origins_list()
+    except Exception:
+        return ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_get_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Resolve frontend path relative to this file — works locally and in Docker
 _BASE_DIR     = Path(__file__).resolve().parent.parent
 frontend_path = str(_BASE_DIR / "frontend")
 app.mount("/static", StaticFiles(directory=frontend_path), name="static")
@@ -79,7 +117,40 @@ async def serve_observability():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from src.tools.search_tool import get_search_provider
+    from src.tools.vector_store import is_available as rag_ok
+    return {
+        "status":          "ok",
+        "search_provider": get_search_provider(),
+        "rag_enabled":     rag_ok(),
+    }
+
+
+# ── MCP tools ──────────────────────────────────────────────────────────────────
+
+@app.get("/mcp/tools")
+async def list_mcp_tools():
+    """Return available MCP tools and their status."""
+    try:
+        from src.mcp.tool_registry import get_mcp_tools, is_mcp_available
+        from src.mcp.servers import MCP_SERVERS
+        tools   = get_mcp_tools()
+        return {
+            "available": is_mcp_available(),
+            "tools": [{"name": t.name, "description": t.description} for t in tools],
+            "servers": [
+                {
+                    "id":          s.id,
+                    "name":        s.name,
+                    "description": s.description,
+                    "enabled":     s.enabled_by_default,
+                    "tools":       s.tools,
+                }
+                for s in MCP_SERVERS
+            ],
+        }
+    except Exception:
+        return {"available": False, "tools": [], "servers": []}
 
 
 # ── Models ─────────────────────────────────────────────────────────────────────
@@ -182,14 +253,12 @@ async def remove_session(session_id: str, current_user=Depends(get_current_user)
 
 @app.get("/traces")
 async def list_traces(current_user=Depends(get_current_user)):
-    """Return all sessions with trace summary stats."""
     from src.database import get_all_trace_sessions
     return get_all_trace_sessions(limit=100)
 
 
 @app.get("/traces/{session_id}")
 async def get_trace(session_id: str, current_user=Depends(get_current_user)):
-    """Return per-node trace events for a session."""
     from src.database import get_trace_events
     s = get_session(session_id, current_user["id"])
     if not s:
@@ -202,7 +271,6 @@ async def get_trace(session_id: str, current_user=Depends(get_current_user)):
 
 @app.get("/sessions/{session_id}/pdf")
 async def download_pdf(session_id: str, t: str = Query(default=None)):
-    """Print-ready HTML — accepts ?t= token so it works in a new browser tab."""
     from src.auth import decode_token
     from src.database import get_user_by_id
     if not t:
@@ -259,6 +327,8 @@ def _build_pdf_html(
     em{{font-style:italic;color:#444}}
     hr{{border:none;border-top:1px solid #e5e7eb;margin:28px 0}}
     code{{font-family:monospace;font-size:13px;background:#f3f4f6;padding:1px 5px;border-radius:4px}}
+    a{{color:#582CFF;text-decoration:none}}
+    a:hover{{text-decoration:underline}}
     .footer{{margin-top:48px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#999;display:flex;justify-content:space-between}}
     @media print{{body{{padding:24px 32px}}@page{{margin:20mm}}}}
   </style>
@@ -306,10 +376,10 @@ def _md_to_html(text: str) -> str:
                 out.append(f"<li>{_inline(re.sub(r'^[0-9]+[.] ', '', lines[i].strip()))}</li>")
                 i += 1
             out.append("</ol>"); continue
-        if re.match(r"^[-*]\s+", s):
+        if re.match(r"^[-*•]\s+", s):
             out.append("<ul>")
-            while i < len(lines) and re.match(r"^[-*]\s+", lines[i].strip()):
-                out.append(f"<li>{_inline(re.sub(r'^[-*] ', '', lines[i].strip()))}</li>")
+            while i < len(lines) and re.match(r"^[-*•]\s+", lines[i].strip()):
+                out.append(f"<li>{_inline(re.sub(r'^[-*•] ', '', lines[i].strip()))}</li>")
                 i += 1
             out.append("</ul>"); continue
         if s == "":
@@ -324,6 +394,8 @@ def _inline(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*",     r"<strong>\1</strong>",          text)
     text = re.sub(r"\*(.+?)\*",         r"<em>\1</em>",                  text)
     text = re.sub(r"`(.+?)`",           r"<code>\1</code>",              text)
+    # Render markdown links [text](url) as HTML anchors
+    text = re.sub(r"\[([^\]]+)\]\((https?://[^\)]+)\)", r'<a href="\2" target="_blank">\1</a>', text)
     return text
 
 
@@ -336,6 +408,17 @@ class ResearchRequest(BaseModel):
     writer_model:   Optional[str] = None
     critique_model: Optional[str] = None
     deep_research:  bool          = False
+
+    # Fix #9: validate topic length
+    @field_validator("topic")
+    @classmethod
+    def topic_must_be_valid(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Topic cannot be empty")
+        if len(v) > 300:
+            raise ValueError("Topic must be 300 characters or fewer")
+        return v
 
 
 async def run_research_stream(
@@ -351,173 +434,219 @@ async def run_research_stream(
     def send(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
-    yield send("status", {"message": "Initializing research pipeline...", "phase": "init"})
+    sem = _user_semaphores[user_id]
+    if not sem._value:
+        yield send("error", {
+            "message": "You already have a research run in progress. Please wait for it to complete."
+        })
+        return
 
-    try:
-        from src.graph.research_graph import build_initial_state, get_research_app
-        from src.observability.tracing import build_langgraph_config, score_langfuse_trace
-        from src.tools.llm import DEFAULT_MODEL, DEFAULT_WRITER_MODEL, DEFAULT_CRITIC_MODEL
+    async with sem:
+        yield send("status", {"message": "Initializing research pipeline...", "phase": "init"})
 
         session_id = str(uuid.uuid4())
-        loop       = asyncio.get_event_loop()
-
-        yield send("status", {"message": "Building agent graph...", "phase": "init"})
-        research_app = await loop.run_in_executor(None, get_research_app)
-
-        res_model = research_model or DEFAULT_MODEL
-        wrt_model = writer_model   or DEFAULT_WRITER_MODEL
-        crt_model = critique_model or DEFAULT_CRITIC_MODEL
-
-        lg_config, trace_id = build_langgraph_config(
-            topic=topic,
-            user_id=user_id,
-            session_id=session_id,
-            deep_research=deep_research,
-        )
-
-        initial_state = build_initial_state(
-            topic=topic,
-            max_iterations=max_iterations,
-            research_model=res_model,
-            writer_model=wrt_model,
-            critique_model=crt_model,
-            deep_research=deep_research,
-            trace_id=trace_id,
-        )
-
-        yield send("status", {
-            "message": f'Starting research on: "{topic}"',
-            "phase": "start",
-        })
-
-        iteration   = 0
-        final_state = dict(initial_state)
-        # per-node timing: record wall time at the START of each chunk
-        _node_start_times: dict = {}
-
-        async for chunk in research_app.astream(initial_state, config=lg_config):
-            for node_name, node_output in chunk.items():
-                node_wall_start = time.time()
-                for k, v in node_output.items():
-                    if k == "research_notes" and isinstance(v, list):
-                        final_state["research_notes"] = (
-                            final_state.get("research_notes", []) + v
-                        )
-                    else:
-                        final_state[k] = v
-                node_latency_ms = (time.time() - node_wall_start) * 1000
-
-                if node_name == "research":
-                    iteration += 1
-                    notes  = node_output.get("research_notes", [])
-                    latest = notes[-1] if notes else ""
-                    yield send("agent_update", {
-                        "agent":      "Research Agent",
-                        "icon":       "🔍",
-                        "iteration":  iteration,
-                        "message":    f"Iteration {iteration}: Gathered research notes",
-                        "detail":     latest[:500] + ("..." if len(latest) > 500 else ""),
-                        "phase":      "research",
-                        "latency_ms": round(node_latency_ms),
-                    })
-
-                elif node_name == "write":
-                    draft = node_output.get("draft", "")
-                    if hasattr(draft, "content"):
-                        draft = draft.content
-                    final_state["draft"] = draft
-                    yield send("agent_update", {
-                        "agent":      "Writer Agent",
-                        "icon":       "✍️",
-                        "iteration":  iteration,
-                        "message":    f"Iteration {iteration}: Draft written",
-                        "detail":     draft[:500] + ("..." if len(draft) > 500 else ""),
-                        "phase":      "write",
-                        "latency_ms": round(node_latency_ms),
-                    })
-
-                elif node_name == "critique":
-                    score    = node_output.get("critique_score",    0.0)
-                    feedback = node_output.get("critique_feedback", "")
-                    yield send("agent_update", {
-                        "agent":      "Critique Agent",
-                        "icon":       "🧐",
-                        "iteration":  iteration,
-                        "message":    f"Iteration {iteration}: Quality score {score:.2f}",
-                        "detail":     feedback[:500] + ("..." if len(feedback) > 500 else ""),
-                        "score":      score,
-                        "phase":      "critique",
-                        "latency_ms": round(node_latency_ms),
-                    })
-
-                # Store latency for trace logging after session is saved
-                _node_start_times[f"{node_name}_{iteration}"] = node_latency_ms
-
-        yield send("status", {"message": "Saving report...", "phase": "finalizing"})
-
-        draft = final_state.get("draft", "")
-        if hasattr(draft, "content"):
-            draft = draft.content
-
-        final_score    = float(final_state.get("critique_score", 0.0))
-        final_iter     = int(final_state.get("iteration", iteration))
-        final_notes    = final_state.get("research_notes", [])
-        final_feedback = final_state.get("critique_feedback", "")
-
-        models_used = json.dumps({
-            "research": res_model,
-            "writer":   wrt_model,
-            "critique": crt_model,
-        })
-        save_session(
-            session_id, user_id, topic,
-            draft, final_score, final_iter, final_notes, models_used,
-        )
-
-        # Log trace events AFTER session is saved (FK constraint)
-        try:
-            from src.database import log_trace_event
-            node_map = {
-                "research": (["topic", "research_model"], ["research_notes", "iteration"]),
-                "write":    (["topic", "research_notes", "writer_model"], ["draft"]),
-                "critique": (["topic", "draft", "critique_model"], ["critique_score", "critique_feedback"]),
-            }
-            for key, latency_ms in _node_start_times.items():
-                parts = key.rsplit("_", 1)
-                node_name = parts[0]
-                iter_num  = int(parts[1]) if len(parts) > 1 else 0
-                in_keys, out_keys = node_map.get(node_name, ([], []))
-                log_trace_event(session_id, node_name, iter_num,
-                                in_keys, out_keys, latency_ms)
-        except Exception:
-            pass
 
         try:
-            score_langfuse_trace(trace_id=trace_id, score=final_score, comment=final_feedback)
-        except Exception:
-            pass
+            from src.graph.research_graph import build_initial_state, get_research_app
+            from src.observability.tracing import build_langgraph_config, score_langfuse_trace
+            from src.tools.llm import DEFAULT_MODEL, DEFAULT_WRITER_MODEL, DEFAULT_CRITIC_MODEL
 
-        yield send("complete", {
-            "session_id":        session_id,
-            "topic":             topic,
-            "draft":             draft,
-            "critique_score":    final_score,
-            "critique_feedback": final_feedback,
-            "iterations":        final_iter,
-            "research_notes":    final_notes,
-            "deep_research":     deep_research,
-            "trace_id":          trace_id,
-            "models": {
+            loop = asyncio.get_event_loop()
+
+            # Surface MCP tool availability before the run starts
+            mcp_info: dict = {"available": False, "tools": []}
+            try:
+                from src.mcp.tool_registry import get_mcp_tool_names, is_mcp_available
+                mcp_info = {
+                    "available": is_mcp_available(),
+                    "tools":     get_mcp_tool_names(),
+                }
+            except Exception:
+                pass
+
+            yield send("status", {
+                "message": "Building agent graph...",
+                "phase":   "init",
+                "mcp":     mcp_info,
+            })
+            research_app = await loop.run_in_executor(None, get_research_app)
+
+            res_model = research_model or DEFAULT_MODEL
+            wrt_model = writer_model   or DEFAULT_WRITER_MODEL
+            crt_model = critique_model or DEFAULT_CRITIC_MODEL
+
+            lg_config, trace_id = build_langgraph_config(
+                topic=topic,
+                user_id=user_id,
+                session_id=session_id,
+                deep_research=deep_research,
+            )
+
+            initial_state = build_initial_state(
+                topic=topic,
+                max_iterations=max_iterations,
+                research_model=res_model,
+                writer_model=wrt_model,
+                critique_model=crt_model,
+                deep_research=deep_research,
+                trace_id=trace_id,
+                session_id=session_id,   # RAG uses this as the index key
+            )
+
+            yield send("status", {
+                "message": f'Starting research on: "{topic}"',
+                "phase":   "start",
+            })
+
+            iteration   = 0
+            final_state = dict(initial_state)
+            _node_start_times: dict = {}
+
+            async for chunk in research_app.astream(initial_state, config=lg_config):
+                for node_name, node_output in chunk.items():
+                    node_wall_start = time.time()
+                    for k, v in node_output.items():
+                        if k == "research_notes" and isinstance(v, list):
+                            final_state["research_notes"] = (
+                                final_state.get("research_notes", []) + v
+                            )
+                        else:
+                            final_state[k] = v
+                    node_latency_ms = (time.time() - node_wall_start) * 1000
+
+                    if node_name == "research":
+                        iteration += 1
+                        notes       = node_output.get("research_notes", [])
+                        latest      = notes[-1] if notes else ""
+                        rag_enabled = node_output.get("rag_enabled", False)
+                        yield send("agent_update", {
+                            "agent":       "Research Agent",
+                            "icon":        "🔍",
+                            "iteration":   iteration,
+                            "message":     f"Iteration {iteration}: Gathered research notes"
+                                           + (" + RAG index built" if rag_enabled else ""),
+                            "detail":      latest[:500] + ("..." if len(latest) > 500 else ""),
+                            "phase":       "research",
+                            "latency_ms":  round(node_latency_ms),
+                            "rag_enabled": rag_enabled,
+                        })
+
+                    elif node_name == "write":
+                        draft = node_output.get("draft", "")
+                        if hasattr(draft, "content"):
+                            draft = draft.content
+                        final_state["draft"] = draft
+                        yield send("agent_update", {
+                            "agent":      "Writer Agent",
+                            "icon":       "✍️",
+                            "iteration":  iteration,
+                            "message":    f"Iteration {iteration}: Draft written",
+                            "detail":     draft[:500] + ("..." if len(draft) > 500 else ""),
+                            "phase":      "write",
+                            "latency_ms": round(node_latency_ms),
+                        })
+
+                    elif node_name == "critique":
+                        score    = node_output.get("critique_score",    0.0)
+                        feedback = node_output.get("critique_feedback", "")
+                        rubric   = node_output.get("critique_rubric",   {})
+                        yield send("agent_update", {
+                            "agent":      "Critique Agent",
+                            "icon":       "🧐",
+                            "iteration":  iteration,
+                            "message":    f"Iteration {iteration}: Quality score {score:.2f}",
+                            "detail":     feedback[:500] + ("..." if len(feedback) > 500 else ""),
+                            "score":      score,
+                            "rubric":     rubric,
+                            "phase":      "critique",
+                            "latency_ms": round(node_latency_ms),
+                        })
+
+                    _node_start_times[f"{node_name}_{iteration}"] = node_latency_ms
+
+            yield send("status", {"message": "Saving report...", "phase": "finalizing"})
+
+            draft = final_state.get("draft", "")
+            if hasattr(draft, "content"):
+                draft = draft.content
+
+            final_score    = float(final_state.get("critique_score", 0.0))
+            final_rubric   = final_state.get("critique_rubric", {})
+            final_iter     = int(final_state.get("iteration", iteration))
+            final_notes    = final_state.get("research_notes", [])
+            final_feedback = final_state.get("critique_feedback", "")
+            rag_was_used   = bool(final_state.get("rag_enabled", False))
+            active_mcp     = final_state.get("mcp_tools", [])
+
+            models_used = json.dumps({
                 "research": res_model,
                 "writer":   wrt_model,
                 "critique": crt_model,
-            },
-        })
+            })
+            save_session(
+                session_id, user_id, topic,
+                draft, final_score, final_iter, final_notes, models_used,
+            )
 
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        yield send("error", {"message": str(exc)})
+            # Clean up per-session RAG index to free memory
+            try:
+                from src.tools.vector_store import clear_session
+                clear_session(session_id)
+            except Exception:
+                pass
+
+            try:
+                from src.database import log_trace_event
+                node_map = {
+                    "research": (["topic", "research_model"], ["research_notes", "iteration", "rag_enabled"]),
+                    "write":    (["topic", "research_notes", "writer_model"], ["draft"]),
+                    "critique": (["topic", "draft", "critique_model"], ["critique_score", "critique_rubric", "critique_feedback"]),
+                }
+                for key, latency_ms in _node_start_times.items():
+                    parts     = key.rsplit("_", 1)
+                    node_name = parts[0]
+                    iter_num  = int(parts[1]) if len(parts) > 1 else 0
+                    in_keys, out_keys = node_map.get(node_name, ([], []))
+                    log_trace_event(session_id, node_name, iter_num,
+                                    in_keys, out_keys, latency_ms)
+            except Exception:
+                pass
+
+            try:
+                score_langfuse_trace(trace_id=trace_id, score=final_score, comment=final_feedback)
+            except Exception:
+                pass
+
+            yield send("complete", {
+                "session_id":        session_id,
+                "topic":             topic,
+                "draft":             draft,
+                "critique_score":    final_score,
+                "critique_rubric":   final_rubric,
+                "critique_feedback": final_feedback,
+                "iterations":        final_iter,
+                "research_notes":    final_notes,
+                "deep_research":     deep_research,
+                "trace_id":          trace_id,
+                "rag_enabled":       rag_was_used,
+                "mcp_tools":         active_mcp,
+                "models": {
+                    "research": res_model,
+                    "writer":   wrt_model,
+                    "critique": crt_model,
+                },
+            })
+
+        except Exception as exc:
+            # Clean up RAG index even on failure
+            try:
+                from src.tools.vector_store import clear_session
+                clear_session(session_id)
+            except Exception:
+                pass
+            import traceback
+            traceback.print_exc()
+            yield send("error", {"message": str(exc)})
 
 
 @app.post("/research/stream")

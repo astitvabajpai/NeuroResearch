@@ -6,16 +6,17 @@ Graph topology:
                   ▲                        │
                   └──────── revise ────────┘
 
-NOTE: The graph is rebuilt on every call to get_research_app() so that
-agent instances are always fresh and model rotation always works correctly.
+Changes:
+- session_id added to initial state so RAG vector store is session-scoped
+- mcp_tools added to initial state (populated from tool_registry)
+- rag_enabled added to initial state (set by ResearchAgent after index build)
 """
-
+import uuid as _uuid
 from langgraph.graph import StateGraph, END
 from src.state.research_state import ResearchState
 
 
 def build_graph():
-    # Import agents fresh each build so they pick up latest code
     from src.agents.research_agent import ResearchAgent
     from src.agents.writer_agent   import WriterAgent
     from src.agents.critique_agent import CritiqueAgent
@@ -57,7 +58,7 @@ def get_research_app():
 
 
 def _reset_app():
-    """No-op kept for backward compatibility with debug scripts."""
+    """No-op kept for backward compatibility."""
     pass
 
 
@@ -69,21 +70,33 @@ def build_initial_state(
     critique_model: str,
     deep_research: bool = False,
     trace_id: str | None = None,
+    session_id: str | None = None,
 ) -> dict:
     from src.tools.llm import DEFAULT_MODEL, DEFAULT_WRITER_MODEL, DEFAULT_CRITIC_MODEL
+
+    # Resolve available MCP tools — graceful if mcp not installed
+    mcp_tool_names: list = []
+    try:
+        from src.mcp.tool_registry import get_mcp_tool_names
+        mcp_tool_names = get_mcp_tool_names()
+    except Exception:
+        pass
+
     return {
         "topic":             topic,
         "research_notes":    [],
         "draft":             "",
         "critique_feedback": "",
         "critique_score":    0.0,
+        "critique_rubric":   {},
         "iteration":         0,
         "max_iterations":    max_iterations,
-        "final_report":      "",
         "research_model":    research_model or DEFAULT_MODEL,
         "writer_model":      writer_model   or DEFAULT_WRITER_MODEL,
         "critique_model":    critique_model or DEFAULT_CRITIC_MODEL,
         "deep_research":     deep_research,
-        "mcp_tools":         [],
+        "session_id":        session_id or str(_uuid.uuid4()),
+        "rag_enabled":       False,
+        "mcp_tools":         mcp_tool_names,
         "trace_id":          trace_id,
     }

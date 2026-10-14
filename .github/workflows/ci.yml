@@ -1,0 +1,38 @@
+# Fix #10: GitHub Actions CI — lint + graph routing + auth smoke tests
+# Runs on every push and pull request.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff pytest pytest-asyncio httpx
+
+      - name: Lint (ruff)
+        run: ruff check src/ --select E,F,W --ignore E501
+
+      - name: Run tests
+        env:
+          # Dummy values — real API calls are mocked in tests
+          GROQ_API_KEY: "test-key-not-real"
+          JWT_SECRET: "ci-test-secret-do-not-use-in-prod"
+        run: pytest tests/ -v --tb=short

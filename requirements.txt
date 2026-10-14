@@ -10,10 +10,22 @@ bcrypt>=4.0.0
 langchain>=0.3.13
 langchain-core>=0.3.28
 langchain-community>=0.3.13
+langchain-huggingface>=0.1.0
 langgraph>=0.2.60
 
 # ── Search ─────────────────────────────────────────────────────────────────────
 ddgs>=9.0.0
+tavily-python>=0.3.0
+
+# ── RAG — vector store + embeddings ───────────────────────────────────────────
+# Note: do NOT add sentence-transformers here — it conflicts with huggingface_hub>=2.0
+# langchain-huggingface handles embeddings via its own dependency tree
+faiss-cpu>=1.8.0
+beautifulsoup4>=4.12.0
+
+# ── MCP ───────────────────────────────────────────────────────────────────────
+mcp>=1.0.0
+# uv/uvx is installed in Docker via the Dockerfile — required for MCP servers
 
 # ── Config / utils ─────────────────────────────────────────────────────────────
 pydantic-settings>=2.7.0
